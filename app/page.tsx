@@ -6,7 +6,8 @@ import { PromoFlow } from "@/components/PromoFlow";
 import { ResultGallery } from "@/components/ResultGallery";
 import { ThemeInput } from "@/components/ThemeInput";
 import { UploadPanel } from "@/components/UploadPanel";
-import { fileToBase64 } from "@/lib/file";
+import { compressLayoutFile, compressRefFile } from "@/lib/client-image";
+import { parseApiJson } from "@/lib/parse-api-response";
 import type { DirectionOption, GeneratedImageResult } from "@/lib/types";
 
 type PromoCopy = {
@@ -65,8 +66,7 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theme }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "生成失败");
+      const data = await parseApiJson<{ options: DirectionOption[]; error?: string }>(res);
       setOptions(data.options);
       setSelected([]);
       setResults([]);
@@ -86,10 +86,10 @@ export default function HomePage() {
       selectedOptions: selected,
       optionContents: options,
       images: {
-        layoutBase64: layoutFile ? await fileToBase64(layoutFile) : undefined,
-        styleBase64: styleFile ? await fileToBase64(styleFile) : undefined,
-        ipBase64: ipFile ? await fileToBase64(ipFile) : undefined,
-        coinBase64: coinFile ? await fileToBase64(coinFile) : undefined,
+        layoutBase64: layoutFile ? await compressLayoutFile(layoutFile) : undefined,
+        styleBase64: styleFile ? await compressRefFile(styleFile) : undefined,
+        ipBase64: ipFile ? await compressRefFile(ipFile) : undefined,
+        coinBase64: coinFile ? await compressRefFile(coinFile) : undefined,
       },
     };
   }
@@ -112,8 +112,10 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "主视觉生成失败");
+      const data = await parseApiJson<{
+        results: GeneratedImageResult[];
+        error?: string;
+      }>(res);
       setResults(data.results);
       const firstKey = data.results[0]?.optionKey ?? null;
       setPromoSourceKey((prev) =>
@@ -161,8 +163,7 @@ export default function HomePage() {
           selectedOptionContent: ctx.opt.content,
         }),
       });
-      const copyData = await copyRes.json();
-      if (!copyRes.ok) throw new Error(copyData.error || "文案生成失败");
+      const copyData = await parseApiJson<PromoCopy & { error?: string }>(copyRes);
       setPromoCopy(copyData);
       setPromoResult(null);
     } catch (e: unknown) {
@@ -194,8 +195,7 @@ export default function HomePage() {
           description: promoCopy.description,
         }),
       });
-      const bannerData = await bannerRes.json();
-      if (!bannerRes.ok) throw new Error(bannerData.error || "推广图生成失败");
+      const bannerData = await parseApiJson<PromoBanner & { error?: string }>(bannerRes);
       setPromoResult(bannerData);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "错误");
@@ -219,8 +219,7 @@ export default function HomePage() {
           selectedOptionContent: ctx.opt.content,
         }),
       });
-      const copyData = await copyRes.json();
-      if (!copyRes.ok) throw new Error(copyData.error || "文案生成失败");
+      const copyData = await parseApiJson<PromoCopy & { error?: string }>(copyRes);
       setPromoCopy(copyData);
       setPromoResult(null);
     } catch (e: unknown) {

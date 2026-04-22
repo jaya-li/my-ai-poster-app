@@ -52,6 +52,9 @@ export function UploadPanel({
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">3. 上传参考图</h2>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        提交前会在浏览器内自动压缩大图，避免线上请求超过 Vercel 体积限制；若仍失败请减少张数或换更小原图。
+      </p>
       <ul className="space-y-2 text-sm">
         {rows.map(({ slot, label, required }) => (
           <li key={slot} className="flex flex-wrap items-center gap-2">
