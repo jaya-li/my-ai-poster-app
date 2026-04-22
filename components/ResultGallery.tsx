@@ -76,7 +76,7 @@ export function ResultGallery({
           disabled={loading}
           className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-violet-600"
         >
-          继续生成推广图
+          继续：生成推广文案
         </button>
       </div>
     </section>

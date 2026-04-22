@@ -47,7 +47,9 @@ export async function POST(req: NextRequest) {
           role: "user",
           content: [
             inputText(
-              `当前主题：${parsed.theme}\n当前选中的视觉方向：${parsed.selectedOptionContent}\n\n以下是广告语参考文件：\n${txtContent}`
+              `当前主题：${parsed.theme}\n当前选中的视觉方向：${parsed.selectedOptionContent}\n\n` +
+                `【项目说明】主视觉为带 QR 的活动海报；用户扫码进入 App，通过分享、邀请、轻量任务等获得积分/优惠券/特典。请写出符合日本本土习惯的、易传播的上半部标题文案，并自然呼应「扫码参与 + 分享裂变」心智，不要复述本说明。\n\n` +
+                `【广告语参考文件】\n${txtContent}`
             ),
           ],
         },

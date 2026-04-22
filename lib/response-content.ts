@@ -7,3 +7,8 @@ export function inputText(text: string): ResponseInputContent {
 export function inputImage(imageUrl: string): ResponseInputContent {
   return { type: "input_image", image_url: imageUrl, detail: "auto" };
 }
+
+/** 画风/IP 等需要细读材质与轮廓时使用 */
+export function inputImageHigh(imageUrl: string): ResponseInputContent {
+  return { type: "input_image", image_url: imageUrl, detail: "high" };
+}

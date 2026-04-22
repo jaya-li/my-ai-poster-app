@@ -141,6 +141,7 @@ export default function HomePage() {
     return { visual, opt };
   }
 
+  /** 主视觉完成后：仅生成日文推广文案；推广图需在下一步手动确认 */
   async function handleGeneratePromo() {
     const ctx = getPromoContext();
     if (!ctx) {
@@ -163,7 +164,23 @@ export default function HomePage() {
       const copyData = await copyRes.json();
       if (!copyRes.ok) throw new Error(copyData.error || "文案生成失败");
       setPromoCopy(copyData);
+      setPromoResult(null);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "错误");
+    } finally {
+      setLoading(false);
+    }
+  }
 
+  async function handleConfirmGenerateBanner() {
+    const ctx = getPromoContext();
+    if (!ctx || !promoCopy) {
+      alert("请先生成推广文案");
+      return;
+    }
+
+    setLoading(true);
+    try {
       const bannerRes = await fetch("/api/generate-banner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,9 +189,9 @@ export default function HomePage() {
           selectedOptionKey: ctx.opt.key,
           selectedOptionContent: ctx.opt.content,
           mainVisualUrl: ctx.visual.imageUrl,
-          headline: copyData.headline,
-          subheadline: copyData.subheadline,
-          description: copyData.description,
+          headline: promoCopy.headline,
+          subheadline: promoCopy.subheadline,
+          description: promoCopy.description,
         }),
       });
       const bannerData = await bannerRes.json();
@@ -213,36 +230,9 @@ export default function HomePage() {
     }
   }
 
+  /** 与「确认生成推广图」相同：重新跑 GPT prompt + Nanobanana（保留当前文案与主视觉） */
   async function handleRegenerateBanner() {
-    const ctx = getPromoContext();
-    if (!ctx || !promoCopy) {
-      alert("请先生成推广文案");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const bannerRes = await fetch("/api/generate-banner", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          theme,
-          selectedOptionKey: ctx.opt.key,
-          selectedOptionContent: ctx.opt.content,
-          mainVisualUrl: ctx.visual.imageUrl,
-          headline: promoCopy.headline,
-          subheadline: promoCopy.subheadline,
-          description: promoCopy.description,
-        }),
-      });
-      const bannerData = await bannerRes.json();
-      if (!bannerRes.ok) throw new Error(bannerData.error || "推广图生成失败");
-      setPromoResult(bannerData);
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "错误");
-    } finally {
-      setLoading(false);
-    }
+    await handleConfirmGenerateBanner();
   }
 
   return (
@@ -303,6 +293,7 @@ export default function HomePage() {
           promoCopy={promoCopy}
           promoResult={promoResult}
           onRegenerateCopy={handleRegenerateCopy}
+          onConfirmGenerateBanner={handleConfirmGenerateBanner}
           onRegenerateBanner={handleRegenerateBanner}
           loading={loading}
           visible={promoVisible}
