@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useState } from "react";
 import { DirectionPicker } from "@/components/DirectionPicker";
 import { PromoFlow } from "@/components/PromoFlow";
@@ -237,9 +238,17 @@ export default function HomePage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <header className="mb-10">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          AI 主视觉 / 推广图生成器
-        </h1>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+            AI 主视觉 / 推广图生成器
+          </h1>
+          <Link
+            href="/studio"
+            className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            画布工作室（节点视图）
+          </Link>
+        </div>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           MVP：主题 → GPT 方向 → 参考图 + Nanobanana 主视觉 → 可选日文文案与推广图。API Key 仅在后端使用。
         </p>
