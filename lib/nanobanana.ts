@@ -129,6 +129,57 @@ async function readResponseJson(res: Response): Promise<unknown> {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractNanoErrorPayload(json: unknown): { message: string; code: string } {
+  if (!json || typeof json !== "object") {
+    return { message: JSON.stringify(json), code: "" };
+  }
+  const o = json as Record<string, unknown>;
+  const nested = o.error;
+  if (nested && typeof nested === "object") {
+    const e = nested as Record<string, unknown>;
+    return {
+      message: typeof e.message === "string" ? e.message : JSON.stringify(nested),
+      code: typeof e.code === "string" ? e.code : "",
+    };
+  }
+  return {
+    message: typeof o.message === "string" ? o.message : JSON.stringify(json),
+    code: typeof o.code === "string" ? o.code : "",
+  };
+}
+
+/** 面向前端的可读错误（仍保留 status 供日志） */
+export function formatNanoApiError(status: number, json: unknown): string {
+  const { message, code } = extractNanoErrorPayload(json);
+  const lower = `${code} ${message}`.toLowerCase();
+
+  if (
+    status === 503 &&
+    (code === "system_memory_overloaded" ||
+      lower.includes("memory overload") ||
+      lower.includes("system memory"))
+  ) {
+    return (
+      "生图服务当前负载过高（内存接近上限），已自动重试仍失败时请隔几分钟再试；" +
+      "建议一次只选 1 个方向生成，或减少参考图张数/尺寸。"
+    );
+  }
+  if (status === 429 || lower.includes("rate limit")) {
+    return "生图请求过于频繁，请稍后再试。";
+  }
+  if (status === 502 || status === 504) {
+    return `生图网关暂时不可用（HTTP ${status}），请稍后重试。详情：${message}`;
+  }
+  return `Nanobanana API error (${status}): ${message || JSON.stringify(json)}`;
+}
+
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+const MAX_NANO_ATTEMPTS = 4;
+
 export async function generateNanoImage(params: {
   prompt: string;
   width: number;
@@ -166,35 +217,46 @@ export async function generateNanoImage(params: {
     body.image = referenceToDataUris(refs);
   }
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(300_000),
-    });
-  } catch (e) {
-    throw new Error(
-      explainFetchFailure(
-        `调用 Nanobanana 失败（${url}）。请检查：网络能否访问 T8Star、API Key、路径 ${path}；参考图过多/过大时也可导致超时`,
-        e
-      )
-    );
+  const payload = JSON.stringify(body);
+
+  for (let attempt = 1; attempt <= MAX_NANO_ATTEMPTS; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: payload,
+        signal: AbortSignal.timeout(300_000),
+      });
+    } catch (e) {
+      throw new Error(
+        explainFetchFailure(
+          `调用 Nanobanana 失败（${url}）。请检查：网络能否访问 T8Star、API Key、路径 ${path}；参考图过多/过大时也可导致超时`,
+          e
+        )
+      );
+    }
+
+    const json = await readResponseJson(res);
+
+    if (res.ok) {
+      return parseNanoImageResponse(json);
+    }
+
+    const canRetry =
+      RETRYABLE_STATUS.has(res.status) && attempt < MAX_NANO_ATTEMPTS;
+    if (canRetry) {
+      const base = 3500 * 2 ** (attempt - 1);
+      const jitter = Math.floor(Math.random() * 1500);
+      await sleep(base + jitter);
+      continue;
+    }
+
+    throw new Error(formatNanoApiError(res.status, json));
   }
 
-  const json = await readResponseJson(res);
-
-  if (!res.ok) {
-    const msg =
-      typeof json === "object" && json !== null && "error" in json
-        ? JSON.stringify((json as { error: unknown }).error)
-        : JSON.stringify(json);
-    throw new Error(`Nanobanana API error (${res.status}): ${msg}`);
-  }
-
-  return parseNanoImageResponse(json);
+  throw new Error("Nanobanana：内部错误（重试循环未返回）");
 }

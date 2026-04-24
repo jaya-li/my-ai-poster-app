@@ -12,6 +12,8 @@ import { inputText, inputImage, inputImageHigh } from "@/lib/response-content";
 import type { ResponseInputContent } from "openai/resources/responses/responses";
 
 export const runtime = "nodejs";
+/** Vercel：Pro 最高可调至 300s；Hobby 仍约 10s 上限，多选方向时请升级或单次少选 */
+export const maxDuration = 300;
 
 const ImageSchema = z.object({
   layoutBase64: z.string().optional(),
@@ -74,7 +76,7 @@ async function buildKvPrompt(params: {
   if (params.images.ipBase64) {
     content.push(
       inputText(
-        "图3：IP 角色参考（高优先级）。主角色须与图为同一 IP：轮廓比例、配色分区、五官与标志性配饰须可辨认；可为扫码互动设计新动作与场景，禁止换脸或换成别的角色。"
+        "图3：IP 角色参考（高优先级）。主角色须与图为同一 IP：轮廓比例、配色分区、五官与标志性配饰须可辨认；可为扫码互动设计新动作与场景，禁止换脸或换成别的角色。你输出的生图 prompt 里必须列出至少 5 条可对照图3的具体外观锚点（物种/毛色/服饰/头饰/涂装/体型等），不得使用泛称。"
       )
     );
     content.push(inputImageHigh(params.images.ipBase64));
@@ -118,50 +120,66 @@ export async function POST(req: NextRequest) {
     const layoutBuffer = Buffer.from(layoutBase64Pure, "base64");
     const { width, height } = await getImageSizeFromBuffer(layoutBuffer);
 
-    const results = [];
+    const order = new Map(parsed.selectedOptions.map((k, i) => [k, i]));
+
+    /** 版式 → IP → 画风 → 金币；串行请求减轻上游内存峰值（避免多方向并行 503） */
+    const referenceImages = [
+      parsed.images.layoutBase64
+        ? {
+            name: "layout",
+            base64: stripDataUrlPrefix(parsed.images.layoutBase64),
+            mimeType: getImageMimeFromBase64(parsed.images.layoutBase64),
+          }
+        : null,
+      parsed.images.ipBase64
+        ? {
+            name: "ip",
+            base64: stripDataUrlPrefix(parsed.images.ipBase64),
+            mimeType: getImageMimeFromBase64(parsed.images.ipBase64),
+          }
+        : null,
+      parsed.images.styleBase64
+        ? {
+            name: "style",
+            base64: stripDataUrlPrefix(parsed.images.styleBase64),
+            mimeType: getImageMimeFromBase64(parsed.images.styleBase64),
+          }
+        : null,
+      parsed.images.coinBase64
+        ? {
+            name: "coin",
+            base64: stripDataUrlPrefix(parsed.images.coinBase64),
+            mimeType: getImageMimeFromBase64(parsed.images.coinBase64),
+          }
+        : null,
+    ].filter(Boolean) as Array<{ name: string; base64: string; mimeType: string }>;
+
+    const ipPromptTail = parsed.images.ipBase64
+      ? " 【参考图顺序】第1张版式锁定；第2张为 IP 角色形象锁定，成片主角色必须与该张在物种类别、毛色与花纹分区、服装与头饰配色及纹样、头身比与五官画风上为同一角色，禁止换成其他吉祥物或另一套配色体系；其后为画风与金币装饰参考（若有）。仅姿势、场景与和二维码的互动方式可创新。"
+      : "";
+
+    const results: Array<{
+      optionKey: (typeof parsed.selectedOptions)[number];
+      prompt: string;
+      imageUrl: string;
+      width: number;
+      height: number;
+    }> = [];
 
     for (const key of parsed.selectedOptions) {
       const selected = parsed.optionContents.find((item) => item.key === key);
       if (!selected) continue;
 
-      const prompt = await buildKvPrompt({
+      let prompt = await buildKvPrompt({
         theme: parsed.theme,
         selectedOptionText: selected.content,
         layoutWidth: width,
         layoutHeight: height,
         images: parsed.images,
       });
-
-      const referenceImages = [
-        parsed.images.layoutBase64
-          ? {
-              name: "layout",
-              base64: stripDataUrlPrefix(parsed.images.layoutBase64),
-              mimeType: getImageMimeFromBase64(parsed.images.layoutBase64),
-            }
-          : null,
-        parsed.images.styleBase64
-          ? {
-              name: "style",
-              base64: stripDataUrlPrefix(parsed.images.styleBase64),
-              mimeType: getImageMimeFromBase64(parsed.images.styleBase64),
-            }
-          : null,
-        parsed.images.ipBase64
-          ? {
-              name: "ip",
-              base64: stripDataUrlPrefix(parsed.images.ipBase64),
-              mimeType: getImageMimeFromBase64(parsed.images.ipBase64),
-            }
-          : null,
-        parsed.images.coinBase64
-          ? {
-              name: "coin",
-              base64: stripDataUrlPrefix(parsed.images.coinBase64),
-              mimeType: getImageMimeFromBase64(parsed.images.coinBase64),
-            }
-          : null,
-      ].filter(Boolean) as Array<{ name: string; base64: string; mimeType: string }>;
+      if (ipPromptTail) {
+        prompt = prompt.trim() + ipPromptTail;
+      }
 
       const nanoResult = await generateNanoImage({
         prompt,
@@ -179,6 +197,8 @@ export async function POST(req: NextRequest) {
         height,
       });
     }
+
+    results.sort((a, b) => (order.get(a.optionKey) ?? 0) - (order.get(b.optionKey) ?? 0));
 
     return NextResponse.json({ results });
   } catch (error: unknown) {

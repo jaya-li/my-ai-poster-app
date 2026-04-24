@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { loadBuiltinBannerLayoutRef } from "@/lib/banner-layout";
-import {
-  formatFooterBlockForPrompt,
-  loadPromoFooterFixedJp,
-} from "@/lib/promo-footer-fixed";
+import { formatFooterBlockForPrompt, loadPromoFooterFixed } from "@/lib/promo-footer-fixed";
+import { inferPromoFooterLocale, PROMO_FOOTER_LOCALES, type PromoFooterLocale } from "@/lib/promo-locale";
 import { openai, getOpenAIModel } from "@/lib/openai";
 import { generateNanoImage } from "@/lib/nanobanana";
 import { BANNER_PROMPT_SYSTEM } from "@/lib/prompts";
@@ -12,6 +10,8 @@ import { inputText, inputImage } from "@/lib/response-content";
 import { urlToNanoReference } from "@/lib/url-to-reference";
 
 export const runtime = "nodejs";
+/** 推广图含 OpenAI + 生图，耗时较长；Hobby 套餐仍受 ~10s 限制，生产建议 Pro */
+export const maxDuration = 300;
 
 const BodySchema = z.object({
   theme: z.string().min(1),
@@ -21,6 +21,8 @@ const BodySchema = z.object({
   headline: z.string().min(1),
   subheadline: z.string().min(1),
   description: z.string().min(1),
+  /** 可选：不填则根据上半部文案语言自动匹配底部①②③与按钮 */
+  footerLocale: z.enum(PROMO_FOOTER_LOCALES).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -37,8 +39,16 @@ export async function POST(req: NextRequest) {
 
     const layoutRef = await loadBuiltinBannerLayoutRef();
     const layoutDataUri = `data:${layoutRef.mimeType};base64,${layoutRef.base64}`;
-    const footerFixed = await loadPromoFooterFixedJp();
-    const footerPromptBlock = formatFooterBlockForPrompt(footerFixed);
+    const footerLocale: PromoFooterLocale =
+      parsed.footerLocale ??
+      inferPromoFooterLocale({
+        headline: parsed.headline,
+        subheadline: parsed.subheadline,
+        description: parsed.description,
+        theme: parsed.theme,
+      });
+    const footerFixed = await loadPromoFooterFixed(footerLocale);
+    const footerPromptBlock = formatFooterBlockForPrompt(footerFixed, footerLocale);
 
     const response = await openai.responses.create({
       model: getOpenAIModel(),
@@ -59,7 +69,7 @@ export async function POST(req: NextRequest) {
             inputText("图1：主视觉（KV）。请提取核心角色、材质与风格，按系统说明重构为横版推广 Banner。"),
             inputImage(parsed.mainVisualUrl),
             inputText(
-              "图2：版式母版。底部白块内①②③与按钮文字以用户消息中的「固定底部文案」为准，须与图2参考一致；上半部主标题/副标题用活动文案；结构、留白比例、字体层级锁定图2。"
+              "图2：版式母版。底部白块内①②③与按钮文字以用户消息中的「固定底部文案」为准（语言与上半部一致，可能与图2参考图上文字不同，以用户消息为准）；上半部主标题/副标题用活动文案；结构、留白比例、字体层级锁定图2。"
             ),
             inputImage(layoutDataUri),
           ],

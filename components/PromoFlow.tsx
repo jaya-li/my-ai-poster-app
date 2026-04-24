@@ -40,16 +40,17 @@ export function PromoFlow({
       <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">5. 推广文案与推广图</h2>
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        推广图会使用<strong>内置构图参考</strong>（<code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">public/promo-layout-ref.png</code>
-        ）与主视觉；下方白块①②③与下载按钮文案由{" "}
-        <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">data/promo-footer-fixed-jp.txt</code>{" "}
-        固定，与版式参考一致；本页生成的日文仅用于<strong>上半部</strong>标题区。尺寸 2560×1344。
+        推广图使用<strong>内置构图参考</strong>（<code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">public/promo-layout-ref.png</code>
+        ）与主视觉。下方白块①②③与下载按钮会随<strong>推广文案语言</strong>自动切换（日/韩/英/巴葡/西/中等），模板来自内置文案或{" "}
+        <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">data/promo-footer-fixed-*.txt</code>
+        ；日语仍可读 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">promo-footer-fixed-jp.txt</code>
+        。版式与图2一致，白块内文字语言以模板为准（可与参考图上的示例字不同）。尺寸 2560×1344。
       </p>
 
       {promoCopy ? (
         <div className="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-medium text-zinc-900 dark:text-zinc-100">日文文案</h3>
+            <h3 className="font-medium text-zinc-900 dark:text-zinc-100">推广文案</h3>
             <button
               type="button"
               onClick={onRegenerateCopy}

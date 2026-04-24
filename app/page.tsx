@@ -7,7 +7,7 @@ import { PromoFlow } from "@/components/PromoFlow";
 import { ResultGallery } from "@/components/ResultGallery";
 import { ThemeInput } from "@/components/ThemeInput";
 import { UploadPanel } from "@/components/UploadPanel";
-import { compressLayoutFile, compressRefFile } from "@/lib/client-image";
+import { compressLayoutFile, compressIpRefFile, compressRefFile } from "@/lib/client-image";
 import { parseApiJson } from "@/lib/parse-api-response";
 import type { DirectionOption, GeneratedImageResult } from "@/lib/types";
 
@@ -89,7 +89,7 @@ export default function HomePage() {
       images: {
         layoutBase64: layoutFile ? await compressLayoutFile(layoutFile) : undefined,
         styleBase64: styleFile ? await compressRefFile(styleFile) : undefined,
-        ipBase64: ipFile ? await compressRefFile(ipFile) : undefined,
+        ipBase64: ipFile ? await compressIpRefFile(ipFile) : undefined,
         coinBase64: coinFile ? await compressRefFile(coinFile) : undefined,
       },
     };
@@ -144,7 +144,7 @@ export default function HomePage() {
     return { visual, opt };
   }
 
-  /** 主视觉完成后：仅生成日文推广文案；推广图需在下一步手动确认 */
+  /** 主视觉完成后：生成本地化推广文案；推广图需在下一步手动确认 */
   async function handleGeneratePromo() {
     const ctx = getPromoContext();
     if (!ctx) {
@@ -250,7 +250,7 @@ export default function HomePage() {
           </Link>
         </div>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          MVP：主题 → GPT 方向 → 参考图 + Nanobanana 主视觉 → 可选日文文案与推广图。API Key 仅在后端使用。
+          MVP：主题 → GPT 方向 → 参考图 + Nanobanana 主视觉 → 可选本地化文案与推广图。API Key 仅在后端使用。
         </p>
         {loading ? (
           <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">处理中，请稍候（多方向将串行请求）…</p>

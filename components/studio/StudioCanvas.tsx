@@ -24,7 +24,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { compressLayoutFile, compressRefFile } from "@/lib/client-image";
+import { compressLayoutFile, compressIpRefFile, compressRefFile } from "@/lib/client-image";
 import { layoutStudioNodes } from "@/lib/studio/layout-graph";
 import { parseApiJson } from "@/lib/parse-api-response";
 import type { DirectionOption, GeneratedImageResult } from "@/lib/types";
@@ -386,19 +386,15 @@ export function StudioCanvas() {
     }
   }, [computed, setNodes, setEdges]);
 
-  const [anchoredNodeId, setAnchoredNodeId] = useState<string | null>(null);
-  const nodeIdListKey = useMemo(() => nodes.map((n) => n.id).sort().join(","), [nodes]);
+  const [preferredAnchorId, setPreferredAnchorId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (nodes.length === 0) {
-      setAnchoredNodeId(null);
-      return;
+  const effectiveAnchorId = useMemo(() => {
+    if (nodes.length === 0) return null;
+    if (preferredAnchorId && nodes.some((n) => n.id === preferredAnchorId)) {
+      return preferredAnchorId;
     }
-    setAnchoredNodeId((prev) => {
-      if (prev && nodes.some((n) => n.id === prev)) return prev;
-      return nodes.find((n) => n.id === "prompt")?.id ?? nodes[0]!.id;
-    });
-  }, [nodeIdListKey]);
+    return nodes.find((n) => n.id === "prompt")?.id ?? nodes[0]!.id;
+  }, [nodes, preferredAnchorId]);
 
   useEffect(() => {
     if (!kvPromoDialogOpen) return;
@@ -455,7 +451,7 @@ export function StudioCanvas() {
       images: {
         layoutBase64: layoutFile ? await compressLayoutFile(layoutFile) : undefined,
         styleBase64: styleFile ? await compressRefFile(styleFile) : undefined,
-        ipBase64: ipFile ? await compressRefFile(ipFile) : undefined,
+        ipBase64: ipFile ? await compressIpRefFile(ipFile) : undefined,
         coinBase64: coinFile ? await compressRefFile(coinFile) : undefined,
       },
     };
@@ -579,7 +575,7 @@ export function StudioCanvas() {
   async function submitBannerFromFooter() {
     const key = selectedCopyKey;
     if (!key) {
-      alert("请先在画布上点选「日文文案」节点");
+      alert("请先在画布上点选「推广文案」节点");
       return;
     }
     const copy = promoCopyByKey[key];
@@ -618,11 +614,6 @@ export function StudioCanvas() {
     }
   }
 
-  const effectiveAnchorId =
-    anchoredNodeId && nodes.some((n) => n.id === anchoredNodeId)
-      ? anchoredNodeId
-      : nodes.find((n) => n.id === "prompt")?.id ?? nodes[0]?.id ?? null;
-
   const panelMode: StudioPanelMode = effectiveAnchorId
     ? getStudioPanelMode(effectiveAnchorId)
     : "prompt";
@@ -656,9 +647,12 @@ export function StudioCanvas() {
 
   useEffect(() => {
     if (!effectiveAnchorId?.startsWith("dir-") || kvPromoDialogOpen) return;
-    setUploadSectionHighlight(true);
-    const t = window.setTimeout(() => setUploadSectionHighlight(false), 2200);
-    return () => clearTimeout(t);
+    const show = window.setTimeout(() => setUploadSectionHighlight(true), 0);
+    const hide = window.setTimeout(() => setUploadSectionHighlight(false), 2200);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
   }, [effectiveAnchorId, kvPromoDialogOpen]);
 
   const studioPanelRef = useRef<HTMLDivElement>(null);
@@ -717,7 +711,7 @@ export function StudioCanvas() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={(_, node) => {
-            setAnchoredNodeId(node.id);
+            setPreferredAnchorId(node.id);
             if (node.id.startsWith("kv-")) {
               const k = dirKeyFromAnchorId(node.id);
               if (k) openKvPromoDialog(k);
@@ -788,7 +782,7 @@ export function StudioCanvas() {
               {panelMode === "prompt" && "当前：主题 / 四方向"}
               {panelMode === "direction" && `当前：方向 · ${anchorKey ?? "—"}`}
               {panelMode === "kv" && `当前：主视觉 · ${anchorKey ?? "—"}`}
-              {panelMode === "copy" && `当前：日文文案 · ${anchorKey ?? "—"}（生成推广图）`}
+              {panelMode === "copy" && `当前：推广文案 · ${anchorKey ?? "—"}（生成推广图）`}
               {panelMode === "banner" && `当前：推广图 · ${anchorKey ?? "—"}`}
             </p>
           </div>
@@ -992,10 +986,10 @@ export function StudioCanvas() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="kv-promo-dialog-title" className="text-base font-semibold text-zinc-50">
-              方案 {selectedKvKey} · 日文推广文案
+              方案 {selectedKvKey} · 本地化推广文案
             </h2>
             <p className="mt-2 text-xs text-zinc-400">
-              文案生成后将出现在该主视觉下方的节点。输入「生文案」等后回车，或直接点下方按钮。
+              将根据主题自动匹配语言与市场（如韩国→韩文、英语国家→英文等）。文案生成后出现在主视觉下方节点。输入「生文案」等后回车，或直接点下方按钮。
             </p>
             <label className="mt-4 block text-xs text-zinc-500">
               指令（可选）
@@ -1028,7 +1022,7 @@ export function StudioCanvas() {
                 disabled={loading}
                 className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
-                生成日文文案
+                生成推广文案
               </button>
             </div>
           </div>

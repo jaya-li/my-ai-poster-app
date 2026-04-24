@@ -24,7 +24,7 @@ export function PromoCopyNode({ data }: NodeProps<PromoCopyRFNode>) {
     >
       <Handle type="target" position={Position.Top} className="!size-2 !border-0 !bg-amber-500" />
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-zinc-200">日文文案 · {data.optionKey}</span>
+        <span className="text-xs font-semibold text-zinc-200">推广文案 · {data.optionKey}</span>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
             data.selected ? "bg-amber-500 text-zinc-950" : "bg-zinc-800 text-zinc-500"

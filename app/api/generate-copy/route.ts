@@ -7,6 +7,7 @@ import { COPYWRITING_SYSTEM_PROMPT } from "@/lib/prompts";
 import { inputText } from "@/lib/response-content";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const BodySchema = z.object({
   theme: z.string().min(1),
@@ -48,8 +49,8 @@ export async function POST(req: NextRequest) {
           content: [
             inputText(
               `当前主题：${parsed.theme}\n当前选中的视觉方向：${parsed.selectedOptionContent}\n\n` +
-                `【项目说明】主视觉为带 QR 的活动海报；用户扫码进入 App，通过分享、邀请、轻量任务等获得积分/优惠券/特典。请写出符合日本本土习惯的、易传播的上半部标题文案，并自然呼应「扫码参与 + 分享裂变」心智，不要复述本说明。\n\n` +
-                `【广告语参考文件】\n${txtContent}`
+                `【项目说明】主视觉为带 QR 的活动海报；用户扫码进入 App，通过分享、邀请、轻量任务等获得积分/优惠券/类福利。请按系统说明**判断目标市场与语言**，写出易传播的半幅标题文案（主/副/说明三行同语言），并自然呼应「扫码参与 + 分享裂变」心智，不要复述本说明。\n\n` +
+                `【日语广告语参考文件】（仅在日本市场判定时重点使用；其它市场勿照搬翻译）\n${txtContent}`
             ),
           ],
         },

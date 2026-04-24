@@ -38,7 +38,12 @@ export function compressLayoutFile(file: File) {
   return fileToCompressedDataUrl(file, { maxSide: 2560, quality: 0.92 });
 }
 
-/** 画风 / IP / 金币 */
+/** 画风 / 金币 */
 export function compressRefFile(file: File) {
   return fileToCompressedDataUrl(file, { maxSide: 1920, quality: 0.86 });
+}
+
+/** IP 角色：轮廓与配饰细节更重要，略提高边长与 JPEG 质量 */
+export function compressIpRefFile(file: File) {
+  return fileToCompressedDataUrl(file, { maxSide: 2560, quality: 0.91 });
 }

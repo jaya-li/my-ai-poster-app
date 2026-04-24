@@ -5,6 +5,7 @@ import { DIRECTION_SYSTEM_PROMPT } from "@/lib/prompts";
 import { inputText } from "@/lib/response-content";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const BodySchema = z.object({
   theme: z.string().min(1, "theme is required"),
@@ -59,7 +60,11 @@ export async function POST(req: NextRequest) {
         },
         {
           role: "user",
-          content: [inputText(`主题：${theme}`)],
+          content: [
+            inputText(
+              `主题：${theme}\n\n请严格紧扣该主题的地域、赛事与文化语境生成 A～D；勿使用主题未提及国家的日常场景作默认背景（例如主题与巴西相关时不要写东京、居酒屋、和风祭典等）。`
+            ),
+          ],
         },
       ],
     });
