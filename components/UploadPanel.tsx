@@ -1,5 +1,7 @@
 "use client";
 
+import { FourPointStarIcon } from "@/components/icons/FourPointStarIcon";
+
 type FileSlot = "layout" | "style" | "ip" | "coin";
 
 type Props = {
@@ -11,6 +13,8 @@ type Props = {
   onGenerateKv: () => void;
   loading: boolean;
   canGenerate: boolean;
+  /** 为 true 时不展示图1上传（使用服务端内置版式） */
+  hideLayoutSlot?: boolean;
 };
 
 const rows: { slot: FileSlot; label: string; required?: boolean }[] = [
@@ -48,15 +52,15 @@ export function UploadPanel({
   onGenerateKv,
   loading,
   canGenerate,
+  hideLayoutSlot = false,
 }: Props) {
+  const visibleRows = hideLayoutSlot ? rows.filter((r) => r.slot !== "layout") : rows;
+
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">3. 上传参考图</h2>
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        提交前会在浏览器内自动压缩大图，避免线上请求超过 Vercel 体积限制；若仍失败请减少张数或换更小原图。
-      </p>
       <ul className="space-y-2 text-sm">
-        {rows.map(({ slot, label, required }) => (
+        {visibleRows.map(({ slot, label, required }) => (
           <li key={slot} className="flex flex-wrap items-center gap-2">
             <span className="min-w-[10rem] text-zinc-600 dark:text-zinc-400">
               {label}
@@ -80,9 +84,10 @@ export function UploadPanel({
         type="button"
         onClick={onGenerateKv}
         disabled={loading || !canGenerate}
-        className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-emerald-600"
+        className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#EB0EF5] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#c90ad0] disabled:opacity-50"
       >
-        生成主视觉（按选中方向串行出图）
+        <FourPointStarIcon className="size-[1.05rem] shrink-0 opacity-95" />
+        生成主视觉
       </button>
     </section>
   );

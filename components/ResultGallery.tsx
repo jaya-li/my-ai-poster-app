@@ -1,5 +1,6 @@
 "use client";
 
+import { FourPointStarIcon } from "@/components/icons/FourPointStarIcon";
 import type { DirectionOption, GeneratedImageResult } from "@/lib/types";
 
 type Props = {
@@ -29,7 +30,7 @@ export function ResultGallery({
 
       {results.length > 1 ? (
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-zinc-600 dark:text-zinc-400">推广图基于哪一张主视觉？</span>
+          <span className="text-zinc-600 dark:text-zinc-400">推广图源</span>
           <select
             value={promoSourceKey ?? results[0]?.optionKey ?? "A"}
             onChange={(e) => onPromoSourceKeyChange(e.target.value as "A" | "B" | "C" | "D")}
@@ -54,9 +55,14 @@ export function ResultGallery({
               alt={`${item.optionKey} 主视觉`}
               className="max-h-[480px] w-auto max-w-full rounded-lg border border-zinc-100 dark:border-zinc-800"
             />
-            <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-zinc-50 p-3 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-              {item.prompt}
-            </pre>
+            <details className="mt-3 rounded-lg border border-zinc-200 dark:border-zinc-700">
+              <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                生图 prompt
+              </summary>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap border-t border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                {item.prompt}
+              </pre>
+            </details>
           </article>
         ))}
       </div>
@@ -74,8 +80,9 @@ export function ResultGallery({
           type="button"
           onClick={onContinuePromo}
           disabled={loading}
-          className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-violet-600"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#EB0EF5] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#c90ad0] disabled:opacity-50"
         >
+          <FourPointStarIcon className="size-[1.05rem] shrink-0 opacity-95" />
           继续：生成推广文案
         </button>
       </div>

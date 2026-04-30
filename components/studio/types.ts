@@ -7,11 +7,15 @@ export type PromptNodeData = {
   label: string;
   status: "idle" | "loading" | "done" | "error";
   errorMessage?: string;
+  /** 当前附着面板所对应的节点（点击高亮） */
+  anchorFocused: boolean;
 };
 
 export type DirectionNodeData = DirectionOption & {
   selected: boolean;
+  anchorFocused: boolean;
   onToggle: () => void;
+  onOptionCommit: (patch: { title?: string; content?: string }) => void;
 };
 
 export type KvResultNodeData = {
@@ -19,7 +23,16 @@ export type KvResultNodeData = {
   imageUrl: string;
   prompt: string;
   selected: boolean;
-  onSelect: () => void;
+  anchorFocused: boolean;
+  onOpenPromo: () => void;
+  refineDraft: string;
+  onRefineDraftChange: (v: string) => void;
+  onRefine: () => void;
+  refineBusy: boolean;
+  historyCount: number;
+  historyIndex: number;
+  onHistoryPrev: () => void;
+  onHistoryNext: () => void;
 };
 
 export type PromoCopyNodeData = {
@@ -28,7 +41,9 @@ export type PromoCopyNodeData = {
   subheadline: string;
   description: string;
   selected: boolean;
+  anchorFocused: boolean;
   onSelect: () => void;
+  onPromoCopyCommit: (patch: { headline?: string; subheadline?: string; description?: string }) => void;
 };
 
 export type PromoBannerNodeData = {
@@ -36,6 +51,17 @@ export type PromoBannerNodeData = {
   imageUrl: string;
   width: number;
   height: number;
+  selected: boolean;
+  anchorFocused: boolean;
+  onSelect: () => void;
+  refineDraft: string;
+  onRefineDraftChange: (v: string) => void;
+  onRefine: () => void;
+  refineBusy: boolean;
+  historyCount: number;
+  historyIndex: number;
+  onHistoryPrev: () => void;
+  onHistoryNext: () => void;
 };
 
 export type PromptRFNode = Node<PromptNodeData, "prompt">;

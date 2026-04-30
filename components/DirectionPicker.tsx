@@ -11,7 +11,13 @@ type Props = {
 };
 
 export function DirectionPicker({ options, selected, onToggle, onSelectAll, onClear }: Props) {
-  if (options.length === 0) return null;
+  if (options.length === 0) {
+    return (
+      <section className="space-y-2 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/50 p-4 dark:border-zinc-700 dark:bg-zinc-900/30">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">2. 选择方向</h2>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-3">
@@ -23,7 +29,7 @@ export function DirectionPicker({ options, selected, onToggle, onSelectAll, onCl
             onClick={onSelectAll}
             className="rounded-md border border-zinc-200 px-3 py-1 text-sm dark:border-zinc-600"
           >
-            全选（将依次生成 4 张）
+            全选
           </button>
           <button
             type="button"

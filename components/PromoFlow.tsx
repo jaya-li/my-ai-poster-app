@@ -1,5 +1,7 @@
 "use client";
 
+import { FourPointStarIcon } from "@/components/icons/FourPointStarIcon";
+
 type PromoCopy = {
   headline: string;
   subheadline: string;
@@ -21,7 +23,9 @@ type Props = {
   onConfirmGenerateBanner: () => void;
   onRegenerateBanner: () => void;
   loading: boolean;
-  visible: boolean;
+  /** 已存在主视觉结果时展示本区块（无需再点「继续」才出现标题） */
+  hasMainVisual: boolean;
+  onStartPromo: () => void;
 };
 
 export function PromoFlow({
@@ -31,21 +35,34 @@ export function PromoFlow({
   onConfirmGenerateBanner,
   onRegenerateBanner,
   loading,
-  visible,
+  hasMainVisual,
+  onStartPromo,
 }: Props) {
-  if (!visible) return null;
+  if (!hasMainVisual) return null;
 
   return (
     <section className="space-y-6 border-t border-zinc-200 pt-8 dark:border-zinc-800">
       <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">5. 推广文案与推广图</h2>
 
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        推广图使用<strong>内置构图参考</strong>（<code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">public/promo-layout-ref.png</code>
-        ）与主视觉。下方白块①②③与下载按钮会随<strong>推广文案语言</strong>自动切换（日/韩/英/巴葡/西/中等），模板来自内置文案或{" "}
-        <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">data/promo-footer-fixed-*.txt</code>
-        ；日语仍可读 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">promo-footer-fixed-jp.txt</code>
-        。版式与图2一致，白块内文字语言以模板为准（可与参考图上的示例字不同）。尺寸 2560×1344。
-      </p>
+      {!promoCopy ? (
+        <div className="space-y-3 rounded-xl border border-[#EB0EF5]/25 bg-[#EB0EF5]/[0.06] p-4 dark:border-[#EB0EF5]/35 dark:bg-[#EB0EF5]/[0.08]">
+          <button
+            type="button"
+            onClick={onStartPromo}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#EB0EF5] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#c90ad0] disabled:opacity-50"
+          >
+            {loading ? (
+              "处理中…"
+            ) : (
+              <>
+                <FourPointStarIcon className="size-[1.05rem] shrink-0 opacity-95" />
+                生成推广文案
+              </>
+            )}
+          </button>
+        </div>
+      ) : null}
 
       {promoCopy ? (
         <div className="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
@@ -55,7 +72,7 @@ export function PromoFlow({
               type="button"
               onClick={onRegenerateCopy}
               disabled={loading}
-              className="text-sm text-violet-700 underline-offset-2 hover:underline disabled:opacity-50 dark:text-violet-400"
+              className="text-sm text-[#EB0EF5] underline-offset-2 hover:underline disabled:opacity-50 dark:text-[#f576f7]"
             >
               重新生成文案
             </button>
@@ -79,13 +96,11 @@ export function PromoFlow({
                 type="button"
                 onClick={onConfirmGenerateBanner}
                 disabled={loading}
-                className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-violet-600"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#EB0EF5] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#c90ad0] disabled:opacity-50"
               >
-                确认生成推广图（GPT 写 prompt + Nanobanana 出图）
+                <FourPointStarIcon className="size-[1.05rem] shrink-0 opacity-95" />
+                生成推广图
               </button>
-              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                确认后将使用当前文案、主视觉与内置构图参考生图；耗时可能较长。
-              </p>
             </div>
           ) : null}
         </div>
@@ -99,7 +114,7 @@ export function PromoFlow({
               type="button"
               onClick={onRegenerateBanner}
               disabled={loading}
-              className="text-sm text-violet-700 underline-offset-2 hover:underline disabled:opacity-50 dark:text-violet-400"
+              className="text-sm text-[#EB0EF5] underline-offset-2 hover:underline disabled:opacity-50 dark:text-[#f576f7]"
             >
               重新生成推广图
             </button>
@@ -110,9 +125,14 @@ export function PromoFlow({
             alt="推广图"
             className="w-full max-w-4xl rounded-lg border border-zinc-100 dark:border-zinc-800"
           />
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-zinc-50 p-3 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-            {promoResult.prompt}
-          </pre>
+          <details className="rounded-lg border border-zinc-200 dark:border-zinc-700">
+            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              生图 prompt
+            </summary>
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap border-t border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+              {promoResult.prompt}
+            </pre>
+          </details>
         </div>
       ) : null}
     </section>
