@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 function ChevronDownIcon({ className }: { className?: string }) {
@@ -309,14 +308,6 @@ export function GrootAgentCanvas() {
                 </button>
               ))}
             </div>
-          </div>
-          <div className="mx-auto mt-2 flex max-w-3xl justify-center gap-4 text-[11px] text-zinc-500">
-            <Link href="/studio" className="hover:text-zinc-300">
-              工作室画布（节点编辑）
-            </Link>
-            <Link href="/" className="hover:text-zinc-300">
-              标准流程
-            </Link>
           </div>
         </footer>
       </div>
