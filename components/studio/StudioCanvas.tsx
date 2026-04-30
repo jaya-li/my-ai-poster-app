@@ -1580,12 +1580,6 @@ function StudioCanvasInner() {
             />
             <Panel position="top-right" className="m-2 mt-14 flex flex-col gap-2 sm:mt-16">
               <Link
-                href="/groot-agent"
-                className="inline-block rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-zinc-200 backdrop-blur hover:bg-white/10"
-              >
-                Groot Agent 演示
-              </Link>
-              <Link
                 href="/"
                 className="inline-block rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-zinc-200 backdrop-blur hover:bg-white/10"
               >

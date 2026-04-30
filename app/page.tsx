@@ -353,12 +353,6 @@ export default function HomePage() {
           </h1>
           <div className="flex shrink-0 flex-wrap gap-2">
             <Link
-              href="/groot-agent"
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Groot Agent（Figma 主页）
-            </Link>
-            <Link
               href="/studio"
               className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
