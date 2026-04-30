@@ -1,19 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import dynamic from "next/dynamic";
-
-const StudioCanvas = dynamic(
-  () => import("@/components/studio/StudioCanvas").then((m) => m.StudioCanvas),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-screen items-center justify-center bg-zinc-950 text-sm text-zinc-400">
-        加载画布…
-      </div>
-    ),
-  }
-);
-
+/** 旧路径 /studio 与首页画布合并，保留重定向避免收藏夹失效 */
 export default function StudioPage() {
-  return <StudioCanvas />;
+  redirect("/");
 }
