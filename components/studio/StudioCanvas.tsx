@@ -1187,6 +1187,8 @@ function StudioCanvasInner() {
 
   const studioPanelRef = useRef<HTMLDivElement>(null);
   const [studioPanelDocked, setStudioPanelDocked] = useState(true);
+  /** 点击画布空白处临时隐藏侧栏浮窗，点击节点或新建线程后恢复 */
+  const [studioPanelDismissed, setStudioPanelDismissed] = useState(false);
   const [studioPanelPos, setStudioPanelPos] = useState({ x: 0, y: 0 });
   const studioPanelDragRef = useRef<{
     pointerId: number;
@@ -1352,6 +1354,7 @@ function StudioCanvasInner() {
     setThreads((prev) => ({ ...prev, [id]: emptyStudioThreadState() }));
     setThreadOrder((prev) => [...prev, id]);
     setPreferredAnchorId(`prompt-${id}`);
+    setStudioPanelDismissed(false);
   }, []);
 
   /** 根节点 onDoubleClick 在点到 pane 时常常收不到；用 onPaneClick 做双击判定 */
@@ -1371,6 +1374,7 @@ function StudioCanvasInner() {
         return;
       }
       paneClickForDblRef.current = { time: now, x, y };
+      setStudioPanelDismissed(true);
     },
     [appendNewStudioThread]
   );
@@ -1537,6 +1541,7 @@ function StudioCanvasInner() {
             onEdgesChange={onEdgesChange}
             onNodeClick={(_, node) => {
               paneClickForDblRef.current = null;
+              setStudioPanelDismissed(false);
               setPreferredAnchorId(node.id);
               const p = parseStudioAnchor(node.id);
               if (!p || p.kind === "prompt") return;
@@ -1590,7 +1595,7 @@ function StudioCanvasInner() {
         </div>
       </div>
 
-      {panelLinkPath ? (
+      {panelLinkPath && !studioPanelDismissed ? (
         <svg
           className={`pointer-events-none fixed inset-0 z-[10039] transition-opacity duration-700 ${
             linkPulse ? "opacity-100" : "opacity-[0.32]"
@@ -1608,7 +1613,7 @@ function StudioCanvasInner() {
         </svg>
       ) : null}
 
-      {effectiveAnchorId ? (
+      {effectiveAnchorId && !studioPanelDismissed ? (
         <div
           ref={studioPanelRef}
           className={`fixed z-[10040] max-h-[42vh] w-[min(92vw,26rem)] overflow-y-auto overflow-x-hidden rounded-2xl border border-white/10 bg-[#26292b]/98 py-3 pl-3 pr-4 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.55)] ring-1 ring-white/[0.06] backdrop-blur-md sm:w-[28rem] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20 ${
