@@ -29,6 +29,9 @@ export type KvResultNodeData = {
   onRefineDraftChange: (v: string) => void;
   onRefine: () => void;
   refineBusy: boolean;
+  onRemoveUi: () => void;
+  removeUiBusy: boolean;
+  splitLayers: Array<{ key: string; label: string; imageUrl: string }>;
   historyCount: number;
   historyIndex: number;
   onHistoryPrev: () => void;

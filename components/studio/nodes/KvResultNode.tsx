@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { KvResultRFNode } from "../types";
 
 export function KvResultNode({ data }: NodeProps<KvResultRFNode>) {
+  const [activeTab, setActiveTab] = useState<"refine" | "remove_ui">("refine");
   const canPrev = data.historyCount > 1 && data.historyIndex > 0;
   const canNext = data.historyCount > 1 && data.historyIndex < data.historyCount - 1;
 
@@ -70,36 +72,84 @@ export function KvResultNode({ data }: NodeProps<KvResultRFNode>) {
         </button>
       </div>
       <div className="space-y-1 border-t border-white/10 px-2 py-1.5">
-        <label className="block text-[10px] text-white/45">
-          画面调整
-          <textarea
-            className="nodrag nopan mt-0.5 w-full resize-y rounded-lg border border-white/15 bg-black/35 px-2 py-1 text-[11px] text-white/90 placeholder:text-white/30"
-            rows={2}
-            placeholder="可选"
-            value={data.refineDraft}
-            onChange={(e) => data.onRefineDraftChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!data.refineBusy) data.onRefine();
-              }
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-black/30 p-0.5 text-[10px]">
+          <button
+            type="button"
+            className={`nodrag nopan rounded-md py-1 ${
+              activeTab === "refine" ? "bg-[#EB0EF5] text-white" : "text-white/65 hover:bg-white/10"
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveTab("refine");
             }}
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          />
-        </label>
-        <button
-          type="button"
-          disabled={data.refineBusy}
-          className="nodrag nopan w-full rounded-lg bg-[#EB0EF5] py-1.5 text-[11px] font-medium text-white hover:bg-[#c90ad0] disabled:opacity-45"
-          onClick={(e) => {
-            e.stopPropagation();
-            data.onRefine();
-          }}
-        >
-          {data.refineBusy ? "生成中…" : "重新生成"}
-        </button>
+          >
+            改字
+          </button>
+          <button
+            type="button"
+            className={`nodrag nopan rounded-md py-1 ${
+              activeTab === "remove_ui"
+                ? "bg-[#EB0EF5] text-white"
+                : "text-white/65 hover:bg-white/10"
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveTab("remove_ui");
+            }}
+          >
+            去UI
+          </button>
+        </div>
+        {activeTab === "refine" ? (
+          <>
+            <label className="block text-[10px] text-white/45">
+              画面调整
+              <textarea
+                className="nodrag nopan mt-0.5 w-full resize-y rounded-lg border border-white/15 bg-black/35 px-2 py-1 text-[11px] text-white/90 placeholder:text-white/30"
+                rows={2}
+                placeholder="可选"
+                value={data.refineDraft}
+                onChange={(e) => data.onRefineDraftChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    (e.ctrlKey || e.metaKey) &&
+                    !e.nativeEvent.isComposing
+                  ) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!data.refineBusy) data.onRefine();
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={data.refineBusy}
+              className="nodrag nopan w-full rounded-lg bg-[#EB0EF5] py-1.5 text-[11px] font-medium text-white hover:bg-[#c90ad0] disabled:opacity-45"
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onRefine();
+              }}
+            >
+              {data.refineBusy ? "生成中…" : "重新生成"}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            disabled={data.removeUiBusy}
+            className="nodrag nopan w-full rounded-lg bg-[#EB0EF5] py-1.5 text-[11px] font-medium text-white hover:bg-[#c90ad0] disabled:opacity-45"
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onRemoveUi();
+            }}
+          >
+            {data.removeUiBusy ? "生成中…" : "去UI生成"}
+          </button>
+        )}
       </div>
       <a
         href={data.imageUrl}
@@ -110,6 +160,28 @@ export function KvResultNode({ data }: NodeProps<KvResultRFNode>) {
       >
         新标签打开原图
       </a>
+      {data.splitLayers.length > 0 ? (
+        <details className="border-t border-white/10 bg-black/20 px-2 py-1.5">
+          <summary className="cursor-pointer text-[10px] text-white/60">拆图结果（{data.splitLayers.length}）</summary>
+          <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+            {data.splitLayers.map((layer) => (
+              <a
+                key={layer.key}
+                href={layer.imageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="nodrag nopan overflow-hidden rounded-md border border-white/10 bg-black/30"
+                onClick={(e) => e.stopPropagation()}
+                title={layer.label}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={layer.imageUrl} alt={layer.label} className="h-16 w-full object-cover" />
+                <p className="truncate px-1 py-0.5 text-center text-[9px] text-white/75">{layer.label}</p>
+              </a>
+            ))}
+          </div>
+        </details>
+      ) : null}
       <Handle type="source" position={Position.Bottom} className="!size-2 !border-0 !bg-[#EB0EF5]/90" />
     </div>
   );

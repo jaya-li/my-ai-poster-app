@@ -1,11 +1,21 @@
 import type { DirectionOption, GeneratedImageResult } from "@/lib/types";
 import type { DirKey } from "@/components/studio/types";
+import type { KvCampaignType } from "@/lib/kv-layout-builtin";
 
 export const STUDIO_MAIN_THREAD_ID = "main";
 
 export type PromptStatus = "idle" | "loading" | "done" | "error";
 
 export type StudioVisualSnapshot = {
+  imageUrl: string;
+  width: number;
+  height: number;
+  prompt: string;
+};
+
+export type StudioSplitLayer = {
+  key: string;
+  label: string;
   imageUrl: string;
   width: number;
   height: number;
@@ -54,6 +64,9 @@ export type StudioThreadState = {
   promoBannerSlots: Partial<Record<DirKey, StudioVisualSlot>>;
   kvRefineDraftByKey: Partial<Record<DirKey, string>>;
   bannerRefineDraftByKey: Partial<Record<DirKey, string>>;
+  kvCampaignTypeByKey: Partial<Record<DirKey, KvCampaignType>>;
+  kvIdeaDraftByKey: Partial<Record<DirKey, string>>;
+  kvSplitLayersByKey: Partial<Record<DirKey, StudioSplitLayer[]>>;
 };
 
 export function emptyStudioThreadState(): StudioThreadState {
@@ -74,6 +87,9 @@ export function emptyStudioThreadState(): StudioThreadState {
     promoBannerSlots: {},
     kvRefineDraftByKey: {},
     bannerRefineDraftByKey: {},
+    kvCampaignTypeByKey: {},
+    kvIdeaDraftByKey: {},
+    kvSplitLayersByKey: {},
   };
 }
 

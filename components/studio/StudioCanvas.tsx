@@ -45,6 +45,7 @@ import {
   makeStudioThreadId,
   STUDIO_MAIN_THREAD_ID,
   type StudioThreadState,
+  type StudioSplitLayer,
   type StudioVisualSnapshot,
 } from "@/lib/studio/studio-thread-state";
 import type { ChongbangKvSpec, StarCollectKvSpec, WheelKvSpec } from "@/lib/prompts";
@@ -319,6 +320,16 @@ function StudioCanvasInner() {
     [patchThread]
   );
 
+  const setKvIdeaDraft = useCallback(
+    (threadId: string, key: DirKey, v: string) => {
+      patchThread(threadId, (t) => ({
+        ...t,
+        kvIdeaDraftByKey: { ...t.kvIdeaDraftByKey, [key]: v },
+      }));
+    },
+    [patchThread]
+  );
+
   const setBannerRefineDraft = useCallback(
     (threadId: string, key: DirKey, v: string) => {
       patchThread(threadId, (t) => ({
@@ -460,6 +471,8 @@ function StudioCanvasInner() {
           delete promoBannerByKey[key];
           const promoBannerSlots = { ...t.promoBannerSlots };
           delete promoBannerSlots[key];
+          const kvSplitLayersByKey = { ...t.kvSplitLayersByKey };
+          delete kvSplitLayersByKey[key];
           return {
             ...prev,
             [threadId]: {
@@ -469,6 +482,7 @@ function StudioCanvasInner() {
               promoCopyByKey,
               promoBannerByKey,
               promoBannerSlots,
+              kvSplitLayersByKey,
               selectedCopyKey: t.selectedCopyKey === key ? null : t.selectedCopyKey,
             },
           };
@@ -483,6 +497,253 @@ function StudioCanvasInner() {
       }
     },
     [threads]
+  );
+
+  const removeKvUi = useCallback(
+    async (threadId: string, key: DirKey) => {
+      const th = threads[threadId];
+      if (!th) return;
+      const slot = th.kvSlots[key];
+      const fromResult = th.results.find((x) => x.optionKey === key);
+      const snap =
+        slot?.history[slot.index] ??
+        (fromResult
+          ? {
+              imageUrl: fromResult.imageUrl,
+              width: fromResult.width,
+              height: fromResult.height,
+              prompt: fromResult.prompt,
+            }
+          : null);
+      if (!snap?.imageUrl) {
+        setPanelNotice({ kind: "error", text: "没有可参照的成图" });
+        return;
+      }
+
+      // 去 UI 时优先使用当前面板玩法，方便同一方向在不同玩法间反复试产出
+      const campaignType = kvCampaignType ?? th.kvCampaignTypeByKey[key];
+
+      setStudioRefining({ kind: "kv_remove_ui", threadId, key });
+      try {
+        const res = await fetch("/api/regenerate-kv-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "kv",
+            mode: "remove_ui",
+            sourceImageUrl: snap.imageUrl,
+            languageInstruction: "",
+            campaignType,
+            width: snap.width,
+            height: snap.height,
+          }),
+        });
+        const data = await parseApiJson<{
+          imageUrl: string;
+          width: number;
+          height: number;
+          prompt: string;
+          error?: string;
+        }>(res);
+        const entry: StudioVisualSnapshot = {
+          imageUrl: data.imageUrl,
+          width: data.width,
+          height: data.height,
+          prompt: data.prompt,
+        };
+        setThreads((prev) => {
+          const t = prev[threadId];
+          if (!t) return prev;
+          const cur = t.kvSlots[key];
+          const hist = [...(cur?.history ?? [{ ...snap }]), entry];
+          const promoCopyByKey = { ...t.promoCopyByKey };
+          delete promoCopyByKey[key];
+          const promoBannerByKey = { ...t.promoBannerByKey };
+          delete promoBannerByKey[key];
+          const promoBannerSlots = { ...t.promoBannerSlots };
+          delete promoBannerSlots[key];
+          const kvSplitLayersByKey = { ...t.kvSplitLayersByKey };
+          delete kvSplitLayersByKey[key];
+          return {
+            ...prev,
+            [threadId]: {
+              ...t,
+              kvSlots: { ...t.kvSlots, [key]: { history: hist, index: hist.length - 1 } },
+              results: t.results.map((r) => (r.optionKey === key ? { ...r, ...entry } : r)),
+              promoCopyByKey,
+              promoBannerByKey,
+              promoBannerSlots,
+              kvSplitLayersByKey,
+              selectedCopyKey: t.selectedCopyKey === key ? null : t.selectedCopyKey,
+            },
+          };
+        });
+      } catch (e: unknown) {
+        setPanelNotice({
+          kind: "error",
+          text: e instanceof Error ? e.message : "去 UI 失败",
+        });
+      } finally {
+        setStudioRefining(null);
+      }
+    },
+    [threads, kvCampaignType]
+  );
+
+  const splitKvLayers = useCallback(
+    async (threadId: string, key: DirKey, instruction: string) => {
+      const th = threads[threadId];
+      if (!th) return;
+      const slot = th.kvSlots[key];
+      const fromResult = th.results.find((x) => x.optionKey === key);
+      const snap =
+        slot?.history[slot.index] ??
+        (fromResult
+          ? {
+              imageUrl: fromResult.imageUrl,
+              width: fromResult.width,
+              height: fromResult.height,
+              prompt: fromResult.prompt,
+            }
+          : null);
+      if (!snap?.imageUrl) {
+        setPanelNotice({ kind: "error", text: "没有可参照的成图" });
+        return;
+      }
+
+      setStudioRefining({ kind: "kv_split", threadId, key });
+      setBusyHint("拆图中…");
+      setLoading(true);
+      try {
+        const res = await fetch("/api/regenerate-kv-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "kv",
+            mode: "split_layers",
+            sourceImageUrl: snap.imageUrl,
+            languageInstruction: instruction,
+            campaignType: kvCampaignType,
+            width: snap.width,
+            height: snap.height,
+          }),
+        });
+        const data = await parseApiJson<{
+          layers: StudioSplitLayer[];
+          error?: string;
+        }>(res);
+        patchThread(threadId, (t) => ({
+          ...t,
+          kvSplitLayersByKey: { ...t.kvSplitLayersByKey, [key]: data.layers ?? [] },
+        }));
+      } catch (e: unknown) {
+        setPanelNotice({
+          kind: "error",
+          text: e instanceof Error ? e.message : "拆图失败",
+        });
+      } finally {
+        setLoading(false);
+        setBusyHint("");
+        setStudioRefining(null);
+      }
+    },
+    [threads, kvCampaignType, patchThread]
+  );
+
+  const runKvIdeaCommand = useCallback(
+    async (threadId: string, key: DirKey) => {
+      const th = threads[threadId];
+      if (!th) return;
+      const idea = (th.kvIdeaDraftByKey[key] ?? "").trim();
+      if (!idea) {
+        setPanelNotice({ kind: "info", text: "请先输入内容" });
+        return;
+      }
+      if (/(拆图|拆分|split)/i.test(idea)) {
+        await splitKvLayers(threadId, key, idea);
+        return;
+      }
+      const slot = th.kvSlots[key];
+      const fromResult = th.results.find((x) => x.optionKey === key);
+      const snap =
+        slot?.history[slot.index] ??
+        (fromResult
+          ? {
+              imageUrl: fromResult.imageUrl,
+              width: fromResult.width,
+              height: fromResult.height,
+              prompt: fromResult.prompt,
+            }
+          : null);
+      if (!snap?.imageUrl) {
+        setPanelNotice({ kind: "error", text: "没有可参照的成图" });
+        return;
+      }
+
+      setStudioRefining({ kind: "kv", threadId, key });
+      try {
+        const res = await fetch("/api/regenerate-kv-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "kv",
+            sourceImageUrl: snap.imageUrl,
+            languageInstruction: idea,
+            width: snap.width,
+            height: snap.height,
+          }),
+        });
+        const data = await parseApiJson<{
+          imageUrl: string;
+          width: number;
+          height: number;
+          prompt: string;
+          error?: string;
+        }>(res);
+        const entry: StudioVisualSnapshot = {
+          imageUrl: data.imageUrl,
+          width: data.width,
+          height: data.height,
+          prompt: data.prompt,
+        };
+        setThreads((prev) => {
+          const t = prev[threadId];
+          if (!t) return prev;
+          const cur = t.kvSlots[key];
+          const hist = [...(cur?.history ?? [{ ...snap }]), entry];
+          const promoCopyByKey = { ...t.promoCopyByKey };
+          delete promoCopyByKey[key];
+          const promoBannerByKey = { ...t.promoBannerByKey };
+          delete promoBannerByKey[key];
+          const promoBannerSlots = { ...t.promoBannerSlots };
+          delete promoBannerSlots[key];
+          const kvSplitLayersByKey = { ...t.kvSplitLayersByKey };
+          delete kvSplitLayersByKey[key];
+          return {
+            ...prev,
+            [threadId]: {
+              ...t,
+              kvSlots: { ...t.kvSlots, [key]: { history: hist, index: hist.length - 1 } },
+              kvRefineDraftByKey: { ...t.kvRefineDraftByKey, [key]: idea },
+              results: t.results.map((r) => (r.optionKey === key ? { ...r, ...entry } : r)),
+              promoCopyByKey,
+              promoBannerByKey,
+              promoBannerSlots,
+              kvSplitLayersByKey,
+              selectedCopyKey: t.selectedCopyKey === key ? null : t.selectedCopyKey,
+            },
+          };
+        });
+      } catch (e: unknown) {
+        setPanelNotice({
+          kind: "error",
+          text: e instanceof Error ? e.message : "生成失败",
+        });
+      } finally {
+        setStudioRefining(null);
+      }
+    },
+    [threads, splitKvLayers]
   );
 
   const refineBanner = useCallback(
@@ -631,6 +892,7 @@ function StudioCanvasInner() {
       setKvRefineDraft,
       setBannerRefineDraft,
       refineKv,
+      removeKvUi,
       refineBanner,
     };
     const preview = mergeStudioThreadGraphs(
@@ -679,6 +941,7 @@ function StudioCanvasInner() {
     setKvRefineDraft,
     setBannerRefineDraft,
     refineKv,
+    removeKvUi,
     refineBanner,
   ]);
 
@@ -759,6 +1022,12 @@ function StudioCanvasInner() {
       patchThread(p.threadId, (t) => {
         const kvSlots = { ...t.kvSlots };
         delete kvSlots[k];
+        const kvCampaignTypeByKey = { ...t.kvCampaignTypeByKey };
+        delete kvCampaignTypeByKey[k];
+        const kvIdeaDraftByKey = { ...t.kvIdeaDraftByKey };
+        delete kvIdeaDraftByKey[k];
+        const kvSplitLayersByKey = { ...t.kvSplitLayersByKey };
+        delete kvSplitLayersByKey[k];
         const kvRefineDraftByKey = { ...t.kvRefineDraftByKey };
         delete kvRefineDraftByKey[k];
         const promoCopyByKey = { ...t.promoCopyByKey };
@@ -773,6 +1042,9 @@ function StudioCanvasInner() {
           ...t,
           results: t.results.filter((x) => x.optionKey !== k),
           kvSlots,
+          kvCampaignTypeByKey,
+          kvIdeaDraftByKey,
+          kvSplitLayersByKey,
           kvRefineDraftByKey,
           promoCopyByKey,
           promoBannerByKey,
@@ -790,6 +1062,12 @@ function StudioCanvasInner() {
       patchThread(p.threadId, (t) => {
         const kvSlots = { ...t.kvSlots };
         delete kvSlots[k];
+        const kvCampaignTypeByKey = { ...t.kvCampaignTypeByKey };
+        delete kvCampaignTypeByKey[k];
+        const kvIdeaDraftByKey = { ...t.kvIdeaDraftByKey };
+        delete kvIdeaDraftByKey[k];
+        const kvSplitLayersByKey = { ...t.kvSplitLayersByKey };
+        delete kvSplitLayersByKey[k];
         const kvRefineDraftByKey = { ...t.kvRefineDraftByKey };
         delete kvRefineDraftByKey[k];
         const promoCopyByKey = { ...t.promoCopyByKey };
@@ -806,6 +1084,9 @@ function StudioCanvasInner() {
           selected: t.selected.filter((x) => x !== k),
           results: t.results.filter((x) => x.optionKey !== k),
           kvSlots,
+          kvCampaignTypeByKey,
+          kvIdeaDraftByKey,
+          kvSplitLayersByKey,
           kvRefineDraftByKey,
           promoCopyByKey,
           promoBannerByKey,
@@ -946,13 +1227,18 @@ function StudioCanvasInner() {
         const promoBannerByKey = { ...t.promoBannerByKey };
         const promoBannerSlots = { ...t.promoBannerSlots };
         const bannerRefineDraftByKey = { ...t.bannerRefineDraftByKey };
+        const kvIdeaDraftByKey = { ...t.kvIdeaDraftByKey };
+        const kvSplitLayersByKey = { ...t.kvSplitLayersByKey };
         for (const k of touchedKeys) {
           delete promoCopyByKey[k];
           delete promoBannerByKey[k];
           delete promoBannerSlots[k];
           delete bannerRefineDraftByKey[k];
+          delete kvIdeaDraftByKey[k];
+          delete kvSplitLayersByKey[k];
         }
         const kvSlots = { ...t.kvSlots };
+        const kvCampaignTypeByKey = { ...t.kvCampaignTypeByKey };
         for (const r of data.results) {
           const entry: StudioVisualSnapshot = {
             imageUrl: r.imageUrl,
@@ -960,6 +1246,7 @@ function StudioCanvasInner() {
             height: r.height,
             prompt: r.prompt,
           };
+          kvCampaignTypeByKey[r.optionKey] = kvCampaignType;
           const cur = kvSlots[r.optionKey];
           if (!cur) {
             kvSlots[r.optionKey] = { history: [entry], index: 0 };
@@ -978,6 +1265,9 @@ function StudioCanvasInner() {
             promoBannerSlots,
             bannerRefineDraftByKey,
             kvSlots,
+            kvCampaignTypeByKey,
+            kvIdeaDraftByKey,
+            kvSplitLayersByKey,
           },
         };
       });
@@ -1001,6 +1291,10 @@ function StudioCanvasInner() {
   async function handlePrimaryGenerate() {
     const tid = activeThreadId;
     const th = threads[tid] ?? emptyStudioThreadState();
+    if (panelMode === "kv" && anchorKey) {
+      await runKvIdeaCommand(tid, anchorKey);
+      return;
+    }
     if (th.selectedCopyKey && th.promoCopyByKey[th.selectedCopyKey]) {
       await submitBannerFromFooter(tid);
       return;
@@ -1348,6 +1642,10 @@ function StudioCanvasInner() {
     : anchorPanelToNode && nearNodeLayout
       ? { left: nearNodeLayout.left, top: nearNodeLayout.top, transform: "translateY(-50%)" }
       : undefined;
+  const panelIdeaValue =
+    panelMode === "kv" && anchorKey
+      ? activeThread.kvIdeaDraftByKey[anchorKey] ?? ""
+      : activeThread.themeDraft;
 
   const appendNewStudioThread = useCallback(() => {
     const id = makeStudioThreadId();
@@ -1649,15 +1947,6 @@ function StudioCanvasInner() {
             <span className="font-mono text-sm leading-none text-white/40" aria-hidden>
               ⋮⋮
             </span>
-            <div className="min-w-0 flex-1 text-left">
-              <p className="text-xs font-medium text-white/85">
-                {panelMode === "prompt" && "当前：主题 / 四方向"}
-                {panelMode === "direction" && `当前：方向 · ${anchorKey ?? "—"}`}
-                {panelMode === "kv" && `当前：主视觉 · ${anchorKey ?? "—"}`}
-                {panelMode === "copy" && `当前：推广文案 · ${anchorKey ?? "—"}`}
-                {panelMode === "banner" && `当前：推广图 · ${anchorKey ?? "—"}`}
-              </p>
-            </div>
           </div>
           {panelNotice ? (
             <div className="mb-2">
@@ -1749,12 +2038,12 @@ function StudioCanvasInner() {
           {panelMode === "direction" ? (
             <details className="mt-3 border-t border-white/10 pt-3">
               <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-400">
-                主题
+                Your idea
               </summary>
               <label className="mt-2 block text-xs text-zinc-400">
-                <span className="sr-only">主题</span>
+                <span className="sr-only">Your idea</span>
                 <textarea
-                  value={activeThread.themeDraft}
+                  value={panelIdeaValue}
                   onChange={(e) =>
                     patchThread(activeThreadId, (t) => ({ ...t, themeDraft: e.target.value }))
                   }
@@ -1765,7 +2054,7 @@ function StudioCanvasInner() {
                     }
                   }}
                   rows={2}
-                  placeholder="活动 / 产品简述"
+                  placeholder="Your idea"
                   className="mt-1 w-full resize-y rounded-lg border border-zinc-600 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
                 />
               </label>
@@ -1775,13 +2064,17 @@ function StudioCanvasInner() {
           {panelMode !== "banner" && panelMode !== "direction" ? (
             <div className="flex flex-wrap items-end gap-2">
               <label className="min-w-0 flex-1 text-xs text-zinc-400">
-                主题
+                Your idea
                 <textarea
                   ref={themeTextareaRef}
-                  value={activeThread.themeDraft}
-                  onChange={(e) =>
-                    patchThread(activeThreadId, (t) => ({ ...t, themeDraft: e.target.value }))
-                  }
+                  value={panelIdeaValue}
+                  onChange={(e) => {
+                    if (panelMode === "kv" && anchorKey) {
+                      setKvIdeaDraft(activeThreadId, anchorKey, e.target.value);
+                      return;
+                    }
+                    patchThread(activeThreadId, (t) => ({ ...t, themeDraft: e.target.value }));
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) {
                       e.preventDefault();
@@ -1789,7 +2082,7 @@ function StudioCanvasInner() {
                     }
                   }}
                   rows={2}
-                  placeholder="活动 / 产品简述"
+                  placeholder="Your idea（如：拆图）"
                   className="mt-1 w-full resize-y rounded-lg border border-zinc-600 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
                 />
               </label>

@@ -25,7 +25,9 @@ function makeStudioEdge(
   };
 }
 
-export type StudioThreadRefining = null | { kind: "kv" | "banner"; threadId: string; key: DirKey };
+export type StudioThreadRefining =
+  | null
+  | { kind: "kv" | "kv_remove_ui" | "kv_split" | "banner"; threadId: string; key: DirKey };
 
 export type BuildThreadGraphCallbacks = {
   toggleDirection: (threadId: string, key: DirKey) => void;
@@ -43,6 +45,7 @@ export type BuildThreadGraphCallbacks = {
   setKvRefineDraft: (threadId: string, key: DirKey, v: string) => void;
   setBannerRefineDraft: (threadId: string, key: DirKey, v: string) => void;
   refineKv: (threadId: string, key: DirKey) => void | Promise<void>;
+  removeKvUi: (threadId: string, key: DirKey) => void | Promise<void>;
   refineBanner: (threadId: string, key: DirKey) => void | Promise<void>;
 };
 
@@ -73,6 +76,7 @@ export function buildStudioThreadGraph(
     promoBannerSlots,
     kvRefineDraftByKey,
     bannerRefineDraftByKey,
+    kvSplitLayersByKey,
   } = thread;
 
   const suppressed = new Set(suppressedDirKeys);
@@ -164,10 +168,21 @@ export function buildStudioThreadGraph(
         refineDraft: kvRefineDraftByKey[r.optionKey] ?? "",
         onRefineDraftChange: (v: string) => callbacks.setKvRefineDraft(threadId, r.optionKey, v),
         onRefine: () => callbacks.refineKv(threadId, r.optionKey),
+        onRemoveUi: () => callbacks.removeKvUi(threadId, r.optionKey),
         refineBusy:
           studioRefining?.kind === "kv" &&
           studioRefining.threadId === threadId &&
           studioRefining.key === r.optionKey,
+        removeUiBusy:
+          studioRefining?.kind === "kv_remove_ui" &&
+          studioRefining.threadId === threadId &&
+          studioRefining.key === r.optionKey,
+        splitLayers:
+          (kvSplitLayersByKey[r.optionKey] ?? []).map((l) => ({
+            key: l.key,
+            label: l.label,
+            imageUrl: l.imageUrl,
+          })) ?? [],
         historyCount: kvHist,
         historyIndex: kvIdx,
         onHistoryPrev: () => callbacks.bumpKvHistory(threadId, r.optionKey, -1),
