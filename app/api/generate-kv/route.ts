@@ -146,7 +146,9 @@ async function buildKvPrompt(params: {
     );
     systemAndTaskBlock =
       `你是广告视觉 Prompt Engineer。我会提供主题、参考图与**转盘抽奖**专用 PE。你要输出**一段**可直接给 nanobanana 执行的中文生图 prompt。\n\n` +
+      `【转盘 · 附件顺序务必对齐】本轮生图库的参考图附件顺序为 **版式 → 画风（图2）→ IP（图3）→ 金币**。下文「图2/图3」标签与附件顺序一致；**不要**套用「画风在 IP 之后」的旧惯性。\n\n` +
       `【转盘抽奖玩法】若图1 为活动页级母版，下述专用 PE 中关于**结构锁定、转盘扇区数量与分割及指针/中心钮几何不变、只换肤与奖品图、全页单一语言、金币位置保留、IP 不挡转盘**等要求，优先于通用条款里仅针对「二维码营销海报」的表述；**图1 无二维码区时不要虚构二维码**。\n\n` +
+      `【图2 / 图3 必须写进成片描述】若用户上传了画风参考（图2）或 IP 参考（图3），你输出的最终生图 prompt 中**禁止**仅用「参考图2/图3」带过；须在正文里分别写出至少 **5 条**可执行的视觉锚点（图2：渲染类型、主色与辅色、冷暖光、笔触/虚实边、环境与木石材质等；图3：**眉眼妆造、鼻嘴形状、体态、服饰裁片与纹样、高光与阴影画法如网点或线宽等**）。若文案主题给出的节庆/语种与两张参考可读出的文化语境冲突，以参考为准统一全页。**禁止「另一只橘猫」式替身。**\n\n` +
       `${KV_PROMPT_SYSTEM}\n\n---\n\n${pe}\n\n---\n\n` +
       `须同时体现：同一套转盘玩法页面结构、主题换肤感、「点击转动随机停格获奖」可读性、指针与扇区关系清楚、统一氛围。\n\n` +
       `【输出画幅与图1完全一致】${params.layoutWidth}×${params.layoutHeight} 像素；图1 各功能区块的几何位置、分区比例与信息层级须对齐。`;
@@ -191,11 +193,11 @@ async function buildKvPrompt(params: {
   }
 
   if (params.images.styleBase64) {
-    content.push(
-      inputText(
-        "图2：画风参考（高优先级）。请细读渲染类型、色彩系统、光影与材质画法；成片必须与该画风一致，不要换成另一种美术体系；不要照搬本图构图。"
-      )
-    );
+    const styleHint =
+      params.campaignType === "wheel"
+        ? "图2：画风与环境母题参考（**转盘强约束**）。从图中读出**建筑/自然/光照/调色盘/材质**，写进最终 prompt；成片背景、木石与金属 UI 饰面、天空与氛围光须与该张**同一套插画画法与色温**；**禁止**在参考明显为某一文化场景时整页换成另一套地域模板。须锁定：2D/3D 类型、边缘虚实、主辅色、冷暖光与高光形状、笔触/颗粒；**禁止**换成另一种渲染体系；不要照搬本图构图。你输出的生图 prompt 正文须写出**至少 5 条**对照图2 的可核验风格锚点，不得仅写「同图2」。"
+        : "图2：画风参考（高优先级）。请细读渲染类型、色彩系统、光影与材质画法；成片必须与该画风一致，不要换成另一种美术体系；不要照搬本图构图。";
+    content.push(inputText(styleHint));
     content.push(inputImageHigh(params.images.styleBase64));
   }
 
@@ -209,7 +211,7 @@ async function buildKvPrompt(params: {
         "图3：IP 角色参考（可选，高优先级）。主角色须与图为同一 IP：轮廓比例、配色分区、五官与标志性配饰须可辨认；在星星收集玩法中 IP **仅能做辅助**，不得遮挡或抢夺中部收集物与容器焦点；可为容器/收集主题设计新姿态与场景，禁止换脸或换成别的角色。你输出的生图 prompt 里必须列出至少 5 条可对照图3的具体外观锚点，不得使用泛称。";
     } else if (params.campaignType === "wheel") {
       ipHint =
-        "图3：IP 角色参考（可选，高优先级）。主角色须与图为同一 IP：轮廓比例、配色分区、五官与标志性配饰须可辨认；在转盘抽奖玩法中 IP **仅能做辅助装饰**，不得遮挡转盘、中心按钮与指针，不得抢夺转盘主视觉焦点；禁止换脸或换成别的角色。你输出的生图 prompt 里必须列出至少 5 条可对照图3的具体外观锚点，不得使用泛称。";
+        "图3：IP 角色参考（**用户已上传则必达**）。须与图为**同一角色**而非「同色动物」：逐条复现**五官走向（眉/眼/鼻/嘴）、头身比与耳位、毛色分块与服饰结构、标志性小道具**；**必须**在最终 prompt 中写明图3 的**阴影/材质画法**（如粗线勾边、高光对比、半色调网点、平涂腮红等），**禁止**改成闭眼软萌流水脸或另一套 Q 版比例。转盘玩法中 IP **仅配角装饰**，不得遮挡转盘盘面、中心按钮与指针。正文须列**至少 5 条**可对照图3 的具体外观锚点，不得仅写「参考图3」或泛称。";
     } else if (params.campaignType === "baiyuan") {
       ipHint =
         "图3：IP 角色参考（高优先级）。须化身为符合主题的**双角色紧密互动**：沿用图3 同一 IP 的可识别特征（至少 5 条具体外观锚点写入最终 prompt）；右侧主角大比例、强引导至中央大奖，左侧配角呼应；禁止换脸或换成别的角色。";
@@ -255,6 +257,22 @@ async function buildKvPrompt(params: {
   return response.output_text.trim();
 }
 
+/** 转盘 Nanobanana 参考顺序为版式→画风→IP→金币，尾部须与 referenceImages 完全一致 */
+function buildWheelNanoPromptTail(
+  refs: ReadonlyArray<{ name: string }>
+): string {
+  if (refs.length <= 1) return "";
+  const label: Record<string, string> = {
+    layout: "版式母版（转盘扇区数与径向分割、中心钮、指针与各 UI 模块占位锁定）",
+    style:
+      "画风全局参考——成片渲染维度、线条、色彩系统、光影与材质颗粒须与该张一致；转盘外圈质感、背景天空/场景氛围、主按钮高光习惯须服从，禁止换成另一套美术管线",
+    ip: "IP 角色参考——须为同一吉祥物/IP（禁止换物种、换脸或另一套配色分区）；仅配角位，严禁遮挡转盘盘面、中心按钮与指针",
+    coin: "金币或积分币质感与镶边参考",
+  };
+  const parts = refs.map((r, i) => `第${i + 1}张${label[r.name] ?? `（${r.name}）`}`);
+  return ` 【生图参考图顺序（与本请求实际上传顺序一致）】${parts.join("；")}。`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -291,49 +309,85 @@ export async function POST(req: NextRequest) {
 
     const order = new Map(parsed.selectedOptions.map((k, i) => [k, i]));
 
-    /** 版式 → IP → 画风 → 金币；串行请求减轻上游内存峰值（避免多方向并行 503） */
-    const referenceImages = [
-      {
-        name: "layout",
-        base64: layoutBase64Pure,
-        mimeType: getImageMimeFromBase64(layoutDataUrl),
-      },
-      imagesForKv.ipBase64
-        ? {
-            name: "ip",
-            base64: stripDataUrlPrefix(imagesForKv.ipBase64),
-            mimeType: getImageMimeFromBase64(imagesForKv.ipBase64),
-          }
-        : null,
-      imagesForKv.styleBase64
-        ? {
-            name: "style",
-            base64: stripDataUrlPrefix(imagesForKv.styleBase64),
-            mimeType: getImageMimeFromBase64(imagesForKv.styleBase64),
-          }
-        : null,
-      imagesForKv.coinBase64
-        ? {
-            name: "coin",
-            base64: stripDataUrlPrefix(imagesForKv.coinBase64),
-            mimeType: getImageMimeFromBase64(imagesForKv.coinBase64),
-          }
-        : null,
-    ].filter(Boolean) as Array<{ name: string; base64: string; mimeType: string }>;
+    /**
+     * 非转盘：版式 → IP → 画风 → 金币（与历史 ipPromptTail 文案一致）。
+     * 转盘：版式 → 画风 → IP → 金币，让生图模型更早锁定全局渲染体系，再锁 IP（与 GPT 侧图2/图3 分工一致）。
+     */
+    const referenceImages =
+      campaignType === "wheel"
+        ? ([
+            {
+              name: "layout",
+              base64: layoutBase64Pure,
+              mimeType: getImageMimeFromBase64(layoutDataUrl),
+            },
+            imagesForKv.styleBase64
+              ? {
+                  name: "style",
+                  base64: stripDataUrlPrefix(imagesForKv.styleBase64),
+                  mimeType: getImageMimeFromBase64(imagesForKv.styleBase64),
+                }
+              : null,
+            imagesForKv.ipBase64
+              ? {
+                  name: "ip",
+                  base64: stripDataUrlPrefix(imagesForKv.ipBase64),
+                  mimeType: getImageMimeFromBase64(imagesForKv.ipBase64),
+                }
+              : null,
+            imagesForKv.coinBase64
+              ? {
+                  name: "coin",
+                  base64: stripDataUrlPrefix(imagesForKv.coinBase64),
+                  mimeType: getImageMimeFromBase64(imagesForKv.coinBase64),
+                }
+              : null,
+          ].filter(Boolean) as Array<{ name: string; base64: string; mimeType: string }>)
+        : ([
+            {
+              name: "layout",
+              base64: layoutBase64Pure,
+              mimeType: getImageMimeFromBase64(layoutDataUrl),
+            },
+            imagesForKv.ipBase64
+              ? {
+                  name: "ip",
+                  base64: stripDataUrlPrefix(imagesForKv.ipBase64),
+                  mimeType: getImageMimeFromBase64(imagesForKv.ipBase64),
+                }
+              : null,
+            imagesForKv.styleBase64
+              ? {
+                  name: "style",
+                  base64: stripDataUrlPrefix(imagesForKv.styleBase64),
+                  mimeType: getImageMimeFromBase64(imagesForKv.styleBase64),
+                }
+              : null,
+            imagesForKv.coinBase64
+              ? {
+                  name: "coin",
+                  base64: stripDataUrlPrefix(imagesForKv.coinBase64),
+                  mimeType: getImageMimeFromBase64(imagesForKv.coinBase64),
+                }
+              : null,
+          ].filter(Boolean) as Array<{ name: string; base64: string; mimeType: string }>);
 
-    const ipPromptTailByCampaign: Record<KvCampaignType, string> = {
+    const ipPromptTailByCampaign: Record<Exclude<KvCampaignType, "wheel">, string> = {
       scan:
         " 【参考图顺序】第1张版式锁定；第2张为 IP 角色形象锁定，成片主角色必须与该张在物种类别、毛色与花纹分区、服装与头饰配色及纹样、头身比与五官画风上为同一角色，禁止换成其他吉祥物或另一套配色体系；其后为画风与金币装饰参考（若有）。仅姿势、场景与和二维码的互动方式可创新。",
       chongbang:
         " 【参考图顺序】第1张版式锁定（冲榜母版）；第2张为 IP 角色形象锁定，成片主角色必须与该张在物种类别、毛色与花纹分区、服装与头饰配色及纹样、头身比与五官画风上为同一角色，禁止换成其他吉祥物或另一套配色体系；其后为画风与金币装饰参考（若有）。仅姿势、场景与主视觉/榜单预留区的互动方式可创新。",
       star_collect:
         " 【参考图顺序】第1张版式锁定（星星收集活动页母版）；第2张为 IP 角色形象锁定，成片主角色必须与该张在物种类别、毛色与花纹分区、服装与头饰配色及纹样、头身比与五官画风上为同一角色，禁止换成其他吉祥物或另一套配色体系；其后为画风与金币装饰参考（若有）。仅姿势、场景与主视觉收集区/容器叙事的互动方式可创新；IP 不得抢夺收集物与容器焦点。",
-      wheel:
-        " 【参考图顺序】第1张版式锁定（转盘抽奖活动页母版）；第2张为 IP 角色形象锁定，成片主角色必须与该张在物种类别、毛色与花纹分区、服装与头饰配色及纹样、头身比与五官画风上为同一角色，禁止换成其他吉祥物或另一套配色体系；其后为画风与金币装饰参考（若有）。仅姿势、配角位置与氛围可创新；IP 不得遮挡转盘、中心按钮与指针，不得抢夺转盘主视觉焦点。",
       baiyuan:
         " 【参考图顺序】第1张百元/App 大促 KV 版式锁定；第2张为 IP 双角色形象锁定，成片须为同一 IP 体系下的主题化双角色（右主左辅），紧密围合中央大奖；其后为画风与金币/奖励材质参考（若有）。背景须为纯白摄影棚、中央奖励容器与图4 金币须集中融合，禁止杂乱漂浮物。",
     };
-    const ipPromptTail = imagesForKv.ipBase64 ? ipPromptTailByCampaign[campaignType] : "";
+    const nanoRefOrderTail =
+      campaignType === "wheel"
+        ? buildWheelNanoPromptTail(referenceImages)
+        : imagesForKv.ipBase64
+          ? ipPromptTailByCampaign[campaignType]
+          : "";
 
     const results: Array<{
       optionKey: (typeof parsed.selectedOptions)[number];
@@ -358,8 +412,8 @@ export async function POST(req: NextRequest) {
         wheelSpec: campaignType === "wheel" ? parsed.wheelSpec : undefined,
         images: imagesForKv,
       });
-      if (ipPromptTail) {
-        prompt = prompt.trim() + ipPromptTail;
+      if (nanoRefOrderTail) {
+        prompt = prompt.trim() + nanoRefOrderTail;
       }
 
       const nanoResult = await generateNanoImage({
