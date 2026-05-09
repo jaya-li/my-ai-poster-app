@@ -10,7 +10,7 @@ import { ThemeInput } from "@/components/ThemeInput";
 import { UploadPanel } from "@/components/UploadPanel";
 import { compressLayoutFile, compressIpRefFile, compressRefFile } from "@/lib/client-image";
 import { parseApiJson } from "@/lib/parse-api-response";
-import type { ChongbangKvSpec, StarCollectKvSpec, WheelKvSpec } from "@/lib/prompts";
+import type { ChongbangKvSpec, StarCollectKvSpec, WheelKvSpec, TuijinbiKvSpec } from "@/lib/prompts";
 import type { DirectionOption, GeneratedImageResult } from "@/lib/types";
 
 type PromoCopy = {
@@ -37,7 +37,7 @@ export default function HomePage() {
   const [selected, setSelected] = useState<("A" | "B" | "C" | "D")[]>([]);
   const [useBuiltinLayout, setUseBuiltinLayout] = useState(false);
   const [kvCampaignType, setKvCampaignType] = useState<
-    "scan" | "chongbang" | "star_collect" | "wheel" | "baiyuan"
+    "scan" | "chongbang" | "star_collect" | "wheel" | "tuijinbi" | "baiyuan"
   >("scan");
   const [chongbangSpecForm, setChongbangSpecForm] = useState({
     targetLanguage: "",
@@ -61,6 +61,16 @@ export default function HomePage() {
     moodKeywords: "",
   });
   const [wheelSpecForm, setWheelSpecForm] = useState({
+    targetLanguage: "",
+    scene: "",
+    prizeElements: "",
+    decorativeElements: "",
+    primaryColor: "",
+    ipBrief: "",
+    coinVariation: "",
+    moodKeywords: "",
+  });
+  const [tuijinbiSpecForm, setTuijinbiSpecForm] = useState({
     targetLanguage: "",
     scene: "",
     prizeElements: "",
@@ -157,6 +167,13 @@ export default function HomePage() {
     });
     const hasWheelSpec = Object.keys(wheelOut).length > 0;
 
+    const tuijinbiOut: TuijinbiKvSpec = {};
+    (Object.keys(tuijinbiSpecForm) as (keyof typeof tuijinbiSpecForm)[]).forEach((k) => {
+      const v = tuijinbiSpecForm[k].trim();
+      if (v) tuijinbiOut[k] = v;
+    });
+    const hasTuijinbiSpec = Object.keys(tuijinbiOut).length > 0;
+
     return {
       theme,
       selectedOptions: selected,
@@ -165,6 +182,7 @@ export default function HomePage() {
       ...(kvCampaignType === "chongbang" && hasChongbangSpec ? { chongbangSpec: chongbangOut } : {}),
       ...(kvCampaignType === "star_collect" && hasStarSpec ? { starCollectSpec: starOut } : {}),
       ...(kvCampaignType === "wheel" && hasWheelSpec ? { wheelSpec: wheelOut } : {}),
+      ...(kvCampaignType === "tuijinbi" && hasTuijinbiSpec ? { tuijinbiSpec: tuijinbiOut } : {}),
       images: {
         ...(useBuiltinLayout
           ? {}
@@ -452,6 +470,15 @@ export default function HomePage() {
               <input
                 type="radio"
                 name="kv-campaign"
+                checked={kvCampaignType === "tuijinbi"}
+                onChange={() => setKvCampaignType("tuijinbi")}
+              />
+              推金币
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5">
+              <input
+                type="radio"
+                name="kv-campaign"
                 checked={kvCampaignType === "baiyuan"}
                 onChange={() => setKvCampaignType("baiyuan")}
               />
@@ -550,6 +577,39 @@ export default function HomePage() {
                       value={wheelSpecForm[key]}
                       onChange={(e) =>
                         setWheelSpecForm((p) => ({ ...p, [key]: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-100"
+                    />
+                  </label>
+                ))}
+              </div>
+            </details>
+          ) : null}
+          {kvCampaignType === "tuijinbi" ? (
+            <details className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 text-sm dark:border-zinc-600 dark:bg-zinc-900/50">
+              <summary className="cursor-pointer font-medium text-zinc-800 dark:text-zinc-200">
+                推金币参数（可选，写入生图 PE）
+              </summary>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    ["targetLanguage", "目标语言"],
+                    ["scene", "场景"],
+                    ["prizeElements", "奖品元素（3×4宫格内）"],
+                    ["decorativeElements", "装饰元素"],
+                    ["primaryColor", "主色调"],
+                    ["ipBrief", "IP设定"],
+                    ["coinVariation", "金币/代币表现"],
+                    ["moodKeywords", "关键词"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className="block text-xs text-zinc-600 dark:text-zinc-400">
+                    {label}
+                    <input
+                      type="text"
+                      value={tuijinbiSpecForm[key]}
+                      onChange={(e) =>
+                        setTuijinbiSpecForm((p) => ({ ...p, [key]: e.target.value }))
                       }
                       className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-100"
                     />

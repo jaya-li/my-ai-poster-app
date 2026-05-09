@@ -7,7 +7,8 @@ export type KvSplitLayerKey =
   | "seven_rewards"
   | "podium"
   | "wheel_body_and_peripherals"
-  | "bottom_buttons";
+  | "bottom_buttons"
+  | "tuijinbi_playfield";
 
 export type KvSplitReferenceConfig = {
   filename: string;
@@ -27,6 +28,10 @@ export const KV_SPLIT_REFERENCE_BY_CAMPAIGN: Partial<Record<KvCampaignType, KvSp
   wheel: {
     filename: "chaitu-zhuanpan.png",
     layers: ["background", "wheel_body_and_peripherals", "bottom_buttons"],
+  },
+  tuijinbi: {
+    filename: "chaitu-tuijinbi.png",
+    layers: ["background", "tuijinbi_playfield", "bottom_buttons"],
   },
 };
 

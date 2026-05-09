@@ -18,7 +18,7 @@ const BodySchema = z.object({
   sourceImageUrl: z.string().min(1),
   languageInstruction: z.string().optional().default(""),
   campaignType: z
-    .enum(["scan", "chongbang", "star_collect", "wheel", "baiyuan"])
+    .enum(["scan", "chongbang", "star_collect", "wheel", "tuijinbi", "baiyuan"])
     .optional()
     .default("scan"),
   width: z.number().int().positive().optional(),
@@ -39,40 +39,46 @@ const KV_EDIT_GUIDE_BANNER = `你是横版推广 Banner 修图 Prompt 工程师�
 - 勿大幅改构图或替换主体题材。
 只输出生图 prompt 正文，不要解释。`;
 
-const KV_REMOVE_UI_GUIDE = `你是资深广告视觉去 UI 修图 Prompt Engineer。任务是把“当前主视觉”转换为“无 UI 纯视觉版”。
+const KV_REMOVE_UI_GUIDE = `你是资深**局部去 UI**修图 Prompt Engineer。任务不是「按同主题新画一张」，而是**同一张成稿去掉界面图层**：除原 UI/文字所占像素外，**其余画面与参考须像同一文件里关掉文字层一样一致**。
 
-【目标（核心）】
-仅移除界面化元素：标题/副标题、按钮、标签、徽标字、进度条、气泡文案、列表文案、角标数字、规则说明、可读字符、图标化 UI 控件、线框/卡片 UI 容器等。
+【最高优先级：防整图篡改】
+- 把编辑理解为**蒙版内修补（inpainting）**：只允许改动「曾经被文字、数字、按钮条、标签条、进度条、卡片区衬底等 UI 物理盖住」的像素；**蒙版外一切像素在造型、色相、明暗、材质、细节上与参考须保持连续一致**。
+- **禁止**：整幅重绘、换画风、换调色滤镜、整体提高饱和度/对比度、重新打光、景深虚化、美颜式磨皮、改主体比例或「优化」角色脸与肢体。
+- **禁止**：因去掉 UI 而「顺便」改写背景、加新道具、挪动机位或重摆主体。
 
-【硬性约束（必须严格执行）】
-1) 不改变画幅比例与输出尺寸。
-2) 不改变主体内容：角色、道具、场景、透视关系、层级关系、镜头角度保持一致。
-3) 不改变主体位置：主物体与关键元素的空间位置、大小占比、相互距离保持一致。
-4) 不改变视觉气质：色彩体系、光影方向、材质风格、清晰度保持一致。
-5) 仅做“减法编辑”：删除 UI 后进行自然背景/材质补全，不新增新的叙事元素。
+【目标（只减不加）】
+移除：标题/副标题、按钮与按钮内字、标签、徽标字、进度条、气泡与列表文案、角标、规则说明、**独立可读字符**、明显属于界面模块的线框与半透明卡底板（若去掉会露底则仅用邻近纹理补满，不新发明图案）。
 
-【去除范围（尽可能完整）】
-- 所有可读文字与数字（任意语言）
-- 标题条、按钮条、信息卡、进度条、状态条、气泡框、说明区
-- 与 UI 强绑定的图标/分割线/底板（如明显属于按钮或信息模块）
+【修补规则（像素级）】
+- 去掉文字/按钮后露出的区域，用**邻近背景或底材的纹理与明暗方向**延伸填补，像内容识别填充；条纹、渐变、木纹、天空等须沿原方向延续。
+- 若某条 UI 横条横跨画面，补完后该区域的材质须与同高度左右未遮挡处**无缝衔接**，不得出现与周围无关的新色块。
+
+【硬性约束】
+1) 画幅与输出尺寸与参考一致。
+2) 镜头、透视、构图骨架不变；地平线、消失点、各模块几何占位不变。
+3) 角色、吉祥物、产品、场景建筑、转盘/宫格/道具**非 UI 部分**轮廓与配色块不变。
+4) 仅做「减法+缺口补全」，**零**叙事性新增（无新人物、无新标语装饰、无新光斑故事）。
 
 【禁止事项】
-- 禁止重构画面、重排版、重画主体
-- 禁止更换角色/道具/场景
-- 禁止新增文字、logo、水印、装饰贴纸
-- 禁止出现涂抹感、马赛克感、残字、幽灵边框、局部糊块
+- 禁止重构排版、禁止换主体或换场景
+- 禁止残留半字、鬼影描边、马赛克塊、脏涂抹
+
+【写给下游模型的句式要求】
+你的输出 prompt 中必须**明确写出**类似含义：**以参考图为锚、仅擦除 UI 像素并修复缺口，未遮挡区域锁死与参考一致**；不要使用「重新设计一张」「全新 KV」等诱发整图生成的表述。
 
 【成片标准】
-结果必须看起来像“同一张主视觉去掉 UI 后的版本”：主体不动、构图不动、内容不变，只是 UI 与文字被干净移除并自然补全。请输出可直接用于生图模型的一段高质量中文 prompt。
-只输出生图 prompt 正文，不要解释。`;
+观众应感觉：**同一张图关了 UI**，而不是换了一版主视觉。
+
+请输出**一段**可直接给图像生成模型执行的高质量中文 prompt（可含逗号分隔的执行要点），**不要**前言后语与解释。`;
 
 const KV_REMOVE_UI_REFERENCE: Partial<
-  Record<"scan" | "chongbang" | "star_collect" | "wheel" | "baiyuan", string>
+  Record<"scan" | "chongbang" | "star_collect" | "wheel" | "tuijinbi" | "baiyuan", string>
 > = {
   scan: "saoma-quchuui.png",
   chongbang: "chongbang-quchuui.png",
   star_collect: "xingxing-quchuui.png",
   wheel: "zhuanpan-quchuui.png",
+  tuijinbi: "tuijinbi-quchuui.png",
   baiyuan: "baiyuan-quchuui.png",
 };
 
@@ -85,7 +91,7 @@ async function loadPublicImageDataUrl(filename: string): Promise<string> {
 type KvSplitLayerPlan = { key: string; label: string; instruction: string };
 
 const KV_SPLIT_LAYER_PLAN: Record<
-  "scan" | "chongbang" | "star_collect" | "wheel" | "baiyuan",
+  "scan" | "chongbang" | "star_collect" | "wheel" | "tuijinbi" | "baiyuan",
   KvSplitLayerPlan[]
 > = {
   scan: [
@@ -111,6 +117,16 @@ const KV_SPLIT_LAYER_PLAN: Record<
       instruction: "仅保留转盘本体与周边物品（含转盘底座、装饰道具），不含背景与下方按钮",
     },
     { key: "bottom_buttons", label: "下方按钮", instruction: "仅保留下方按钮区域（按钮及其紧邻部件）" },
+  ],
+  tuijinbi: [
+    { key: "background", label: "背景", instruction: "仅保留画面上半与周缘氛围背景，不含十二宫格架、台面、球体与底栏" },
+    {
+      key: "tuijinbi_playfield",
+      label: "奖格与台前球区",
+      instruction:
+        "保留 3×4 十二宫格及其支架、透视台面、大号前景球与堆叠小球；不含顶栏 UI 与最底三键横条",
+    },
+    { key: "bottom_buttons", label: "底部三键", instruction: "仅保留底部左中右三按钮控制台横条及其紧邻装饰" },
   ],
   baiyuan: [
     { key: "background", label: "背景", instruction: "仅保留背景环境与场景底层" },
@@ -184,11 +200,11 @@ export async function POST(req: NextRequest) {
         if (splitRefCfg?.filename) {
           try {
             const splitRefDataUrl = await loadPublicImageDataUrl(splitRefCfg.filename);
-            layerContent.push(
-              inputText(
-                `【拆图参考（${splitRefCfg.filename}）】仅学习拆层边界与透明处理方式；严禁复用该参考图的具体内容。`
-              )
-            );
+            const splitRefCaption =
+              parsed.campaignType === "tuijinbi"
+                ? `【推金币拆图参考（${splitRefCfg.filename}）】该图为**分层边界示意**（黑底上三块独立素材）：左≈上半/周缘背景渐变板；中≈含 3×4 十二格与格架（Grid Holder）及中部绿台的一体化「主游玩区」壳层；右≈前景球形主体所在的台面与底控制台区域。拆每一「目标层」时，对照本参考理解**哪条线应镂成透明分界**，只学**拆边与留白/透明处理习惯**，严禁把参考图里的颜色、贴图或物体画进输出，输出内容必须完全来自下方「当前主视觉」。`
+                : `【拆图参考（${splitRefCfg.filename}）】仅学习拆层边界与透明处理方式；严禁复用该参考图的具体内容。`;
+            layerContent.push(inputText(splitRefCaption));
             layerContent.push(inputImageHigh(splitRefDataUrl));
           } catch {
             // ignore missing optional split reference
@@ -234,7 +250,7 @@ export async function POST(req: NextRequest) {
         isBanner
           ? "【参考图】当前横版推广图，须在其基础上改字与语言。"
           : isRemoveUi
-            ? "【参考图】当前主视觉，须在其基础上移除 UI 文案与界面元素。"
+            ? "【参考图＝唯一母本】已附同一文件。任务：**仅移除 UI/可读文案像素**；凡未被文字、按钮条、进度条、信息卡等控件**直接遮挡**的区域，必须与参考在造型、色相、光影、材质上**保持同一连续画面**，禁止整图重画、禁止换滤镜调色、禁止改动主体与背景结构。修补仅限原 UI 条带内的缺口融合。"
             : "【参考图】当前主视觉，须在其基础上改字与语言。"
       )
     );
@@ -247,7 +263,7 @@ export async function POST(req: NextRequest) {
           const removeUiRefDataUrl = await loadPublicImageDataUrl(refFile);
           content.push(
             inputText(
-              `【去 UI 参考样例（${refFile}）】只学习“如何干净移除 UI 并自然补全”的编辑方式。严禁复用该参考图的角色、道具、场景、构图、配色或任何具体内容；当前输出必须完全基于“当前主视觉”本身做减法去 UI。`
+              `【去 UI 参考样例（${refFile}）】只学习「在原图上剜掉字与控件条、用周边纹理填平」的**手术式**编辑，不学习样例里的角色与场景。对你而言**真正有效的母本只有上一条「当前主视觉」大图**：写成稿时须强调与原图非 UI 区域逐区对齐，禁止借样例换题重画。`
             )
           );
           content.push(inputImageHigh(removeUiRefDataUrl));
@@ -267,7 +283,12 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    const prompt = response.output_text.trim();
+    let prompt = response.output_text.trim();
+    if (isRemoveUi) {
+      prompt =
+        "【根参考锁死】严格以附带参考图为唯一基底：仅擦除/填补原 UI、按钮条、可读文字所占区域；其余画面须与参考在主体、背景、光色、材质上保持同一张成稿的连续性，禁止整图重绘、禁止换滤镜调色、禁止改透视或改主体造型。\n\n" +
+        prompt;
+    }
 
     const nanoResult = await generateNanoImage({
       prompt,

@@ -48,7 +48,7 @@ import {
   type StudioSplitLayer,
   type StudioVisualSnapshot,
 } from "@/lib/studio/studio-thread-state";
-import type { ChongbangKvSpec, StarCollectKvSpec, WheelKvSpec } from "@/lib/prompts";
+import type { ChongbangKvSpec, StarCollectKvSpec, WheelKvSpec, TuijinbiKvSpec } from "@/lib/prompts";
 import type { DirectionOption, GeneratedImageResult } from "@/lib/types";
 import { DirectionNode } from "./nodes/DirectionNode";
 import { KvResultNode } from "./nodes/KvResultNode";
@@ -182,7 +182,7 @@ function StudioCanvasInner() {
   } | null>(null);
 
   const [kvCampaignType, setKvCampaignType] = useState<
-    "scan" | "chongbang" | "star_collect" | "wheel" | "baiyuan"
+    "scan" | "chongbang" | "star_collect" | "wheel" | "tuijinbi" | "baiyuan"
   >("scan");
   const [chongbangSpecForm, setChongbangSpecForm] = useState({
     targetLanguage: "",
@@ -206,6 +206,16 @@ function StudioCanvasInner() {
     moodKeywords: "",
   });
   const [wheelSpecForm, setWheelSpecForm] = useState({
+    targetLanguage: "",
+    scene: "",
+    prizeElements: "",
+    decorativeElements: "",
+    primaryColor: "",
+    ipBrief: "",
+    coinVariation: "",
+    moodKeywords: "",
+  });
+  const [tuijinbiSpecForm, setTuijinbiSpecForm] = useState({
     targetLanguage: "",
     scene: "",
     prizeElements: "",
@@ -879,6 +889,16 @@ function StudioCanvasInner() {
     return Object.keys(out).length > 0 ? out : undefined;
   }, [kvCampaignType, wheelSpecForm]);
 
+  const buildTuijinbiSpecPayload = useCallback((): TuijinbiKvSpec | undefined => {
+    if (kvCampaignType !== "tuijinbi") return undefined;
+    const out: TuijinbiKvSpec = {};
+    (Object.keys(tuijinbiSpecForm) as (keyof typeof tuijinbiSpecForm)[]).forEach((k) => {
+      const v = tuijinbiSpecForm[k].trim();
+      if (v) out[k] = v;
+    });
+    return Object.keys(out).length > 0 ? out : undefined;
+  }, [kvCampaignType, tuijinbiSpecForm]);
+
   const computed = useMemo(() => {
     const graphCallbacks = {
       toggleDirection,
@@ -1176,6 +1196,7 @@ function StudioCanvasInner() {
     const chongSpec = kvCampaignType === "chongbang" ? buildChongbangSpecPayload() : undefined;
     const starSpec = kvCampaignType === "star_collect" ? buildStarCollectSpecPayload() : undefined;
     const wheelSpec = kvCampaignType === "wheel" ? buildWheelSpecPayload() : undefined;
+    const tuijinbiSpec = kvCampaignType === "tuijinbi" ? buildTuijinbiSpecPayload() : undefined;
     return {
       theme,
       selectedOptions: th.selected,
@@ -1184,6 +1205,7 @@ function StudioCanvasInner() {
       ...(chongSpec ? { chongbangSpec: chongSpec } : {}),
       ...(starSpec ? { starCollectSpec: starSpec } : {}),
       ...(wheelSpec ? { wheelSpec } : {}),
+      ...(tuijinbiSpec ? { tuijinbiSpec } : {}),
       images: {
         styleBase64: styleFile ? await compressRefFile(styleFile) : undefined,
         ipBase64: ipFile ? await compressIpRefFile(ipFile) : undefined,
@@ -1783,6 +1805,41 @@ function StudioCanvasInner() {
       </details>
     ) : null;
 
+  const tuijinbiParamFields =
+    kvCampaignType === "tuijinbi" ? (
+      <details className="mt-2 rounded-lg border border-zinc-700/80 bg-zinc-950/50 px-3 py-2 text-xs">
+        <summary className="cursor-pointer font-medium text-zinc-300 hover:text-zinc-200">
+          推金币参数（可选，写入生图 PE）
+        </summary>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {(
+            [
+              ["targetLanguage", "目标语言"],
+              ["scene", "场景"],
+              ["prizeElements", "奖品元素（3×4宫格）"],
+              ["decorativeElements", "装饰元素"],
+              ["primaryColor", "主色调"],
+              ["ipBrief", "IP设定"],
+              ["coinVariation", "金币/代币"],
+              ["moodKeywords", "关键词"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="block text-zinc-400">
+              {label}
+              <input
+                type="text"
+                value={tuijinbiSpecForm[key]}
+                onChange={(e) =>
+                  setTuijinbiSpecForm((p) => ({ ...p, [key]: e.target.value }))
+                }
+                className="mt-0.5 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-1 text-zinc-100"
+              />
+            </label>
+          ))}
+        </div>
+      </details>
+    ) : null;
+
   const kvCampaignRadios = (
     <div className="space-y-2 border-b border-white/10 pb-3">
       <p className="text-[11px] font-medium tracking-wide text-white/45">玩法</p>
@@ -1797,6 +1854,7 @@ function StudioCanvasInner() {
             ["chongbang", "冲榜"],
             ["star_collect", "星星收集"],
             ["wheel", "转盘"],
+            ["tuijinbi", "推金币"],
             ["baiyuan", "百元"],
           ] as const
         ).map(([value, label]) => {
@@ -1973,6 +2031,7 @@ function StudioCanvasInner() {
               {chongbangParamFields}
               {starCollectParamFields}
               {wheelParamFields}
+              {tuijinbiParamFields}
               <ul className="grid gap-2 sm:grid-cols-1 sm:grid-cols-2">
                 {studioRefRows.map(({ slot, label }) => {
                   const chosen = slot === "style" ? styleFile : slot === "ip" ? ipFile : coinFile;
@@ -2113,6 +2172,7 @@ function StudioCanvasInner() {
               {chongbangParamFields}
               {starCollectParamFields}
               {wheelParamFields}
+              {tuijinbiParamFields}
               <p
                 className={`rounded-xl border px-3 py-2 text-xs ${
                   activeThread.selected.length > 0
