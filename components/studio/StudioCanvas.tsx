@@ -10,7 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Controls,
   MiniMap,
@@ -40,6 +40,13 @@ import {
   type StudioThreadRefining,
 } from "@/lib/studio/build-studio-thread-graph";
 import { parseStudioAnchor, dirKeyFromStudioNodeId } from "@/lib/studio/parse-studio-anchor";
+import {
+  buildStudioAutosaveV1,
+  computeStudioAutosaveDirty,
+  readStudioHydrateBootstrap,
+  writeStudioAutosave,
+  type StudioAutosaveV1,
+} from "@/lib/studio/studio-session-persistence";
 import {
   emptyStudioThreadState,
   makeStudioThreadId,
@@ -169,14 +176,26 @@ export function StudioCanvas() {
 }
 
 function StudioCanvasInner() {
+  const router = useRouter();
+  const studioBoot = useMemo(() => readStudioHydrateBootstrap(), []);
+
   const paneClickForDblRef = useRef<{ time: number; x: number; y: number } | null>(null);
-  const [threads, setThreads] = useState<Record<string, StudioThreadState>>({
-    [STUDIO_MAIN_THREAD_ID]: emptyStudioThreadState(),
+  const [threads, setThreads] = useState<Record<string, StudioThreadState>>(() => {
+    const t = studioBoot?.threads;
+    if (t && Object.keys(t).length > 0) return t;
+    return { [STUDIO_MAIN_THREAD_ID]: emptyStudioThreadState() };
   });
-  const [threadOrder, setThreadOrder] = useState<string[]>([STUDIO_MAIN_THREAD_ID]);
-  const [preferredAnchorId, setPreferredAnchorId] = useState<string | null>(
-    `prompt-${STUDIO_MAIN_THREAD_ID}`
+  const [threadOrder, setThreadOrder] = useState<string[]>(
+    () =>
+      studioBoot?.threadOrder?.length
+        ? studioBoot.threadOrder
+        : [STUDIO_MAIN_THREAD_ID]
   );
+  const [preferredAnchorId, setPreferredAnchorId] = useState<string | null>(() => {
+    const a = studioBoot?.preferredAnchorId;
+    if (a === null || typeof a === "string") return a ?? `prompt-${STUDIO_MAIN_THREAD_ID}`;
+    return `prompt-${STUDIO_MAIN_THREAD_ID}`;
+  });
 
   const [promoDialogTarget, setPromoDialogTarget] = useState<{
     threadId: string;
@@ -185,50 +204,62 @@ function StudioCanvasInner() {
 
   const [kvCampaignType, setKvCampaignType] = useState<
     "scan" | "chongbang" | "star_collect" | "wheel" | "tuijinbi" | "baiyuan"
-  >("scan");
-  const [chongbangSpecForm, setChongbangSpecForm] = useState({
-    targetLanguage: "",
-    scene: "",
-    rewardItems: "",
-    decorativeElements: "",
-    primaryColor: "",
-    mascotBrief: "",
-    coinVariation: "",
-    moodKeywords: "",
-  });
-  const [starCollectSpecForm, setStarCollectSpecForm] = useState({
-    targetLanguage: "",
-    collectible: "",
-    container: "",
-    scene: "",
-    decorativeElements: "",
-    primaryColor: "",
-    ipBrief: "",
-    coinVariation: "",
-    moodKeywords: "",
-  });
-  const [wheelSpecForm, setWheelSpecForm] = useState({
-    targetLanguage: "",
-    scene: "",
-    prizeElements: "",
-    decorativeElements: "",
-    primaryColor: "",
-    ipBrief: "",
-    coinVariation: "",
-    moodKeywords: "",
-  });
-  const [tuijinbiSpecForm, setTuijinbiSpecForm] = useState({
-    targetLanguage: "",
-    scene: "",
-    projectileBrief: "",
-    gridThemeBrief: "",
-    prizeElements: "",
-    decorativeElements: "",
-    primaryColor: "",
-    ipBrief: "",
-    coinVariation: "",
-    moodKeywords: "",
-  });
+  >(() => studioBoot?.kvCampaignType ?? "scan");
+  const [chongbangSpecForm, setChongbangSpecForm] = useState(
+    () =>
+      studioBoot?.specForms.chongbang ?? {
+        targetLanguage: "",
+        scene: "",
+        rewardItems: "",
+        decorativeElements: "",
+        primaryColor: "",
+        mascotBrief: "",
+        coinVariation: "",
+        moodKeywords: "",
+      }
+  );
+  const [starCollectSpecForm, setStarCollectSpecForm] = useState(
+    () =>
+      studioBoot?.specForms.starCollect ?? {
+        targetLanguage: "",
+        collectible: "",
+        container: "",
+        scene: "",
+        decorativeElements: "",
+        primaryColor: "",
+        ipBrief: "",
+        coinVariation: "",
+        moodKeywords: "",
+      }
+  );
+  const [wheelSpecForm, setWheelSpecForm] = useState(
+    () =>
+      studioBoot?.specForms.wheel ?? {
+        targetLanguage: "",
+        scene: "",
+        prizeElements: "",
+        decorativeElements: "",
+        primaryColor: "",
+        ipBrief: "",
+        coinVariation: "",
+        moodKeywords: "",
+      }
+  );
+  const [tuijinbiSpecForm, setTuijinbiSpecForm] = useState(
+    () =>
+      studioBoot?.specForms.tuijinbi ?? {
+        targetLanguage: "",
+        scene: "",
+        projectileBrief: "",
+        gridThemeBrief: "",
+        prizeElements: "",
+        decorativeElements: "",
+        primaryColor: "",
+        ipBrief: "",
+        coinVariation: "",
+        moodKeywords: "",
+      }
+  );
   const [styleFile, setStyleFile] = useState<File | null>(null);
   const [ipFile, setIpFile] = useState<File | null>(null);
   const [coinFile, setCoinFile] = useState<File | null>(null);
@@ -248,24 +279,28 @@ function StudioCanvasInner() {
    * 切换 Tab 仅影响输入面板的显示，画布上的 thread/节点是共享的，谁产出的图都展示在一起，
    * 也都共用 KV/copy/banner 节点的后续编辑流（改图/去 UI/拆图/文案/推广图）。
    */
-  const [canvasMode, setCanvasMode] = useState<"agent" | "custom">("agent");
+  const [canvasMode, setCanvasMode] = useState<"agent" | "custom">(() => studioBoot?.canvasMode ?? "agent");
 
   /** 自定义模式：阶段 + 表单字段（全部驻留父级，CSS 隐藏即可保状态） */
-  const [customPhase, setCustomPhase] = useState<CustomModePhase>("input");
-  const [customIdea, setCustomIdea] = useState("");
-  const [customCampaignType, setCustomCampaignType] = useState<KvCampaignType>("scan");
+  const [customPhase, setCustomPhase] = useState<CustomModePhase>(() => studioBoot?.customPhase ?? "input");
+  const [customIdea, setCustomIdea] = useState(() => studioBoot?.customIdea ?? "");
+  const [customCampaignType, setCustomCampaignType] = useState<KvCampaignType>(
+    () => studioBoot?.customCampaignType ?? "scan"
+  );
   const [customLayoutFile, setCustomLayoutFile] = useState<File | null>(null);
   const [customStyleFile, setCustomStyleFile] = useState<File | null>(null);
   const [customIpFile, setCustomIpFile] = useState<File | null>(null);
   const [customCoinFile, setCustomCoinFile] = useState<File | null>(null);
-  const [customDraftedPrompt, setCustomDraftedPrompt] = useState("");
+  const [customDraftedPrompt, setCustomDraftedPrompt] = useState(
+    () => studioBoot?.customDraftedPrompt ?? ""
+  );
   const [customPeMeta, setCustomPeMeta] = useState<{
     layoutBase64: string;
     width: number;
     height: number;
     campaignType: KvCampaignType;
     kvLayoutTemplate?: string;
-  } | null>(null);
+  } | null>(() => studioBoot?.customPeMeta ?? null);
   const [customLoading, setCustomLoading] = useState(false);
   const [customBusyHint, setCustomBusyHint] = useState("");
   const [customNotice, setCustomNotice] = useState<{
@@ -1586,6 +1621,86 @@ function StudioCanvasInner() {
     : "prompt";
   const anchorKey = effectiveAnchorId ? dirKeyFromStudioNodeId(effectiveAnchorId) : null;
 
+  const autosaveSlice: Omit<StudioAutosaveV1, "v" | "savedAt"> = useMemo(
+    () => ({
+      threads,
+      threadOrder,
+      preferredAnchorId,
+      kvCampaignType,
+      specForms: {
+        chongbang: chongbangSpecForm,
+        starCollect: starCollectSpecForm,
+        wheel: wheelSpecForm,
+        tuijinbi: tuijinbiSpecForm,
+      },
+      canvasMode,
+      customPhase,
+      customIdea,
+      customCampaignType,
+      customDraftedPrompt,
+      customPeMeta,
+    }),
+    [
+      threads,
+      threadOrder,
+      preferredAnchorId,
+      kvCampaignType,
+      chongbangSpecForm,
+      starCollectSpecForm,
+      wheelSpecForm,
+      tuijinbiSpecForm,
+      canvasMode,
+      customPhase,
+      customIdea,
+      customCampaignType,
+      customDraftedPrompt,
+      customPeMeta,
+    ]
+  );
+
+  const autosaveRef = useRef(autosaveSlice);
+  autosaveRef.current = autosaveSlice;
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      writeStudioAutosave(buildStudioAutosaveV1(autosaveSlice));
+    }, 450);
+    return () => window.clearTimeout(id);
+  }, [autosaveSlice]);
+
+  /** 触控板后退、关标签等：先写入 sessionStorage，再在「可能有内容」时用系统离开确认弹窗节流误操作 */
+  useEffect(() => {
+    const flush = () => {
+      writeStudioAutosave(buildStudioAutosaveV1(autosaveRef.current));
+    };
+    window.addEventListener("pagehide", flush);
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      if (!computeStudioAutosaveDirty(autosaveRef.current)) return;
+      flush();
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", beforeUnload);
+    };
+  }, []);
+
+  const confirmNavigateAway = useCallback(
+    (href: string = "/flow") => {
+      if (computeStudioAutosaveDirty(autosaveRef.current)) {
+        const ok = window.confirm(
+          "要离开当前画布吗？画布内容会自动保存在本浏览器（仅本标签页会话）；也可选「取消」继续编辑。"
+        );
+        if (!ok) return;
+      }
+      writeStudioAutosave(buildStudioAutosaveV1(autosaveRef.current));
+      router.push(href);
+    },
+    [router]
+  );
+
   const studioIdeaFieldLabel = panelMode === "kv" ? "改图说明" : "Your idea";
   const studioIdeaPlaceholder =
     panelMode === "kv"
@@ -2102,12 +2217,13 @@ function StudioCanvasInner() {
                   );
                 })}
               </div>
-              <Link
-                href="/flow"
+              <button
+                type="button"
                 className="inline-block rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-zinc-200 backdrop-blur hover:bg-white/10"
+                onClick={() => confirmNavigateAway("/flow")}
               >
                 标准流程
-              </Link>
+              </button>
             </Panel>
           </ReactFlow>
         </div>
