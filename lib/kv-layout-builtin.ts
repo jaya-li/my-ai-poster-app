@@ -1,3 +1,6 @@
+/**
+ * 内置主视觉版式：`public/` 下的 PNG 与玩法对应关系见 `public/KV_ASSETS.md`（以仓库实际文件为准）。
+ */
 import { promises as fs } from "fs";
 import path from "path";
 
@@ -56,13 +59,12 @@ export const BUILTIN_KV_WHEEL_LAYOUTS_EXCLUDING_BRAZIL_MARKET = [
   "kv-layout-zhuanpan3.png",
 ] as const;
 
-/** 推金币 / 台前落物：多张主题不同的竖版母版（含球门式十二格 + 滑道 + Hero 落球区等），每次请求随机 1 张作为图1 */
+/** 推金币：\`public/\` 四张竖版母版（纵向分区一致；奖格常见 -1 为 3×4，-2/-3/-4 多为 4×4，以图为准），每次随机 1 张作图1 */
 export const BUILTIN_KV_TUIJINBI_LAYOUTS = [
   "kv-tuijinbi-1.png",
   "kv-tuijinbi-2.png",
   "kv-tuijinbi-3.png",
   "kv-tuijinbi-4.png",
-  "kv-tuijinbi-5.png",
 ] as const;
 
 /** 百元玩法：专用版式母版，随机选 1 张作为图1 */

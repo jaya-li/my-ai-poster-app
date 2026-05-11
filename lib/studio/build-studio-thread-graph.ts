@@ -42,9 +42,9 @@ export type BuildThreadGraphCallbacks = {
   ) => void;
   bumpKvHistory: (threadId: string, key: DirKey, delta: number) => void;
   bumpBannerHistory: (threadId: string, key: DirKey, delta: number) => void;
-  setKvRefineDraft: (threadId: string, key: DirKey, v: string) => void;
+  /** 主视觉节点点击图片：打开右侧改图面板 */
+  onKvActivateEditPanel: (threadId: string, key: DirKey) => void;
   setBannerRefineDraft: (threadId: string, key: DirKey, v: string) => void;
-  refineKv: (threadId: string, key: DirKey) => void | Promise<void>;
   removeKvUi: (threadId: string, key: DirKey) => void | Promise<void>;
   refineBanner: (threadId: string, key: DirKey) => void | Promise<void>;
 };
@@ -74,7 +74,6 @@ export function buildStudioThreadGraph(
     promoBannerByKey,
     kvSlots,
     promoBannerSlots,
-    kvRefineDraftByKey,
     bannerRefineDraftByKey,
     kvSplitLayersByKey,
   } = thread;
@@ -161,16 +160,18 @@ export function buildStudioThreadGraph(
       data: {
         optionKey: r.optionKey,
         imageUrl: kvDisplayUrl,
+        width: kvSnap.width,
+        height: kvSnap.height,
         prompt: kvDisplayPrompt,
         selected: selectedKvKey === r.optionKey,
         anchorFocused: focusedNodeId === kvId,
         onOpenPromo: () => callbacks.onKvOpenPromo(threadId, r.optionKey),
-        refineDraft: kvRefineDraftByKey[r.optionKey] ?? "",
-        onRefineDraftChange: (v: string) => callbacks.setKvRefineDraft(threadId, r.optionKey, v),
-        onRefine: () => callbacks.refineKv(threadId, r.optionKey),
+        onActivateEditPanel: () => callbacks.onKvActivateEditPanel(threadId, r.optionKey),
         onRemoveUi: () => callbacks.removeKvUi(threadId, r.optionKey),
-        refineBusy:
-          studioRefining?.kind === "kv" &&
+        adjustmentBusy:
+          (studioRefining?.kind === "kv" ||
+            studioRefining?.kind === "kv_remove_ui" ||
+            studioRefining?.kind === "kv_split") &&
           studioRefining.threadId === threadId &&
           studioRefining.key === r.optionKey,
         removeUiBusy:

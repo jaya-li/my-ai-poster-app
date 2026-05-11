@@ -1,13 +1,21 @@
+/**
+ * 自定义模式 - PE 阶段：仅运行 GPT，把用户「想法 + 玩法 + 4 张参考图（可选）」
+ * 转成可直接喂给 nanobanana 的中文 prompt，回传给前端二次编辑。
+ *
+ * 返回字段说明：
+ *  - prompt：包含 nano refs 尾注（与 referenceImages 顺序一致），用户可整体改。
+ *  - layoutBase64：本次真正用到的图1 dataURL（用户上传或随机抽到的内置）；
+ *    /api/generate-kv-from-prompt 须接收同一份，避免「编 PE 时用 layout-A、出图却用 layout-B」。
+ *  - layoutWidth / layoutHeight：最终成图分辨率；同上必须传给下一步以确保一致。
+ *  - kvLayoutTemplate：内置随机命中的文件名（用户上传时为空）。
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { generateNanoImage } from "@/lib/nanobanana";
-import { tryNormalizeRemoteImageToLayoutPixels } from "@/lib/nano-output-normalize";
 import { getImageSizeFromBuffer, stripDataUrlPrefix } from "@/lib/image";
 import { getKvCampaignOutputPixels } from "@/lib/kv-campaign-output-size";
 import { loadBuiltinKvLayoutDataUrl, type KvCampaignType } from "@/lib/kv-layout-builtin";
 import {
   KvImageSchema,
-  KvOptionSchema,
   ChongbangSpecSchema,
   StarCollectSpecSchema,
   WheelSpecSchema,
@@ -19,25 +27,18 @@ import {
 } from "@/lib/server/kv-generation-helpers";
 
 export const runtime = "nodejs";
-/** Vercel：Pro 最高可调至 300s；Hobby 仍约 10s 上限，多选方向时请升级或单次少选 */
 export const maxDuration = 300;
 
 const BodySchema = z.object({
-  theme: z.string().min(1),
-  selectedOptions: z.array(z.enum(["A", "B", "C", "D"])).min(1),
-  optionContents: z.array(KvOptionSchema).length(4),
-  /** 不传 layoutBase64 时使用内置版式；与 campaignType 决定随机池 */
+  /** 自定义模式用户输入的主创意/想法；将同时作为 theme 与 selectedOptionText 注入 PE。 */
+  idea: z.string().min(1, "想法不能为空"),
   campaignType: z
     .enum(["scan", "chongbang", "star_collect", "wheel", "tuijinbi", "baiyuan"])
     .optional()
     .default("scan"),
-  /** 仅 campaignType=chongbang 时使用；字段均可选 */
   chongbangSpec: ChongbangSpecSchema,
-  /** 仅 campaignType=star_collect 时使用；字段均可选 */
   starCollectSpec: StarCollectSpecSchema,
-  /** 仅 campaignType=wheel 时使用；字段均可选 */
   wheelSpec: WheelSpecSchema,
-  /** 仅 campaignType=tuijinbi 时使用；结构与 wheel 表单一致 */
   tuijinbiSpec: TuijinbiSpecSchema,
   images: KvImageSchema,
 });
@@ -53,19 +54,17 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const parsed = BodySchema.parse(body);
-
     const campaignType = parsed.campaignType as KvCampaignType;
 
     let layoutDataUrl: string;
     let kvLayoutTemplate: string | undefined;
-
     if (parsed.images.layoutBase64?.trim()) {
       layoutDataUrl = parsed.images.layoutBase64;
     } else {
       const builtin = await loadBuiltinKvLayoutDataUrl(campaignType, {
         wheelLocaleBlob:
           campaignType === "wheel"
-            ? buildWheelLocaleBlob(parsed.theme, parsed.wheelSpec)
+            ? buildWheelLocaleBlob(parsed.idea, parsed.wheelSpec)
             : undefined,
       });
       layoutDataUrl = builtin.dataUrl;
@@ -90,13 +89,7 @@ export async function POST(req: NextRequest) {
       height = fallbackPx.height;
     }
 
-    const imagesForKv: typeof parsed.images = {
-      ...parsed.images,
-      layoutBase64: layoutDataUrl,
-    };
-
-    const order = new Map(parsed.selectedOptions.map((k, i) => [k, i]));
-
+    const imagesForKv = { ...parsed.images, layoutBase64: layoutDataUrl };
     const referenceImages = buildKvReferenceImages(campaignType, imagesForKv);
     const nanoRefOrderTail = buildCampaignNanoRefTail(
       campaignType,
@@ -104,66 +97,32 @@ export async function POST(req: NextRequest) {
       Boolean(imagesForKv.ipBase64)
     );
 
-    const results: Array<{
-      optionKey: (typeof parsed.selectedOptions)[number];
-      prompt: string;
-      imageUrl: string;
-      width: number;
-      height: number;
-    }> = [];
-
-    for (const key of parsed.selectedOptions) {
-      const selected = parsed.optionContents.find((item) => item.key === key);
-      if (!selected) continue;
-
-      let prompt = await buildKvPrompt({
-        theme: parsed.theme,
-        selectedOptionText: selected.content,
-        layoutWidth: width,
-        layoutHeight: height,
-        campaignType,
-        chongbangSpec: campaignType === "chongbang" ? parsed.chongbangSpec : undefined,
-        starCollectSpec: campaignType === "star_collect" ? parsed.starCollectSpec : undefined,
-        wheelSpec: campaignType === "wheel" ? parsed.wheelSpec : undefined,
-        tuijinbiSpec: campaignType === "tuijinbi" ? parsed.tuijinbiSpec : undefined,
-        images: imagesForKv,
-      });
-      if (nanoRefOrderTail) {
-        prompt = prompt.trim() + nanoRefOrderTail;
-      }
-
-      const nanoResult = await generateNanoImage({
-        prompt,
-        width,
-        height,
-        quality: "2k",
-        referenceImages,
-      });
-
-      const imageUrl = await tryNormalizeRemoteImageToLayoutPixels(
-        nanoResult.imageUrl,
-        width,
-        height
-      );
-
-      results.push({
-        optionKey: key,
-        prompt,
-        imageUrl,
-        width,
-        height,
-      });
-    }
-
-    results.sort((a, b) => (order.get(a.optionKey) ?? 0) - (order.get(b.optionKey) ?? 0));
+    let prompt = await buildKvPrompt({
+      theme: parsed.idea,
+      selectedOptionText: parsed.idea,
+      layoutWidth: width,
+      layoutHeight: height,
+      campaignType,
+      chongbangSpec: campaignType === "chongbang" ? parsed.chongbangSpec : undefined,
+      starCollectSpec:
+        campaignType === "star_collect" ? parsed.starCollectSpec : undefined,
+      wheelSpec: campaignType === "wheel" ? parsed.wheelSpec : undefined,
+      tuijinbiSpec: campaignType === "tuijinbi" ? parsed.tuijinbiSpec : undefined,
+      images: imagesForKv,
+    });
+    if (nanoRefOrderTail) prompt = prompt.trim() + nanoRefOrderTail;
 
     return NextResponse.json({
-      results,
+      prompt,
       campaignType,
+      layoutBase64: layoutDataUrl,
+      layoutWidth: width,
+      layoutHeight: height,
       ...(kvLayoutTemplate ? { kvLayoutTemplate } : {}),
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to generate KV";
+    const message =
+      error instanceof Error ? error.message : "Failed to build KV prompt";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

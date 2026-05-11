@@ -31,7 +31,7 @@ import {
   StudioPanelAnchorBridge,
   type StudioPanelAnchorPayload,
 } from "@/components/studio/StudioPanelAnchorBridge";
-import { compressIpRefFile, compressRefFile } from "@/lib/client-image";
+import { compressIpRefFile, compressLayoutFile, compressRefFile } from "@/lib/client-image";
 import { layoutStudioNodes } from "@/lib/studio/layout-graph";
 import { parseApiJson } from "@/lib/parse-api-response";
 import { STUDIO_ACCENT_RGB } from "@/lib/studio/studio-accent";
@@ -49,7 +49,9 @@ import {
   type StudioVisualSnapshot,
 } from "@/lib/studio/studio-thread-state";
 import type { ChongbangKvSpec, StarCollectKvSpec, WheelKvSpec, TuijinbiKvSpec } from "@/lib/prompts";
+import type { KvCampaignType } from "@/lib/kv-layout-builtin";
 import type { DirectionOption, GeneratedImageResult } from "@/lib/types";
+import { CustomModePanel, type CustomModePhase } from "./CustomModePanel";
 import { DirectionNode } from "./nodes/DirectionNode";
 import { KvResultNode } from "./nodes/KvResultNode";
 import { PromoBannerNode } from "./nodes/PromoBannerNode";
@@ -218,6 +220,8 @@ function StudioCanvasInner() {
   const [tuijinbiSpecForm, setTuijinbiSpecForm] = useState({
     targetLanguage: "",
     scene: "",
+    projectileBrief: "",
+    gridThemeBrief: "",
     prizeElements: "",
     decorativeElements: "",
     primaryColor: "",
@@ -237,6 +241,37 @@ function StudioCanvasInner() {
   const [kvPromoDialogOpen, setKvPromoDialogOpen] = useState(false);
   const [promoDialogInput, setPromoDialogInput] = useState("");
   const [studioRefining, setStudioRefining] = useState<StudioThreadRefining>(null);
+
+  /**
+   * 画布模式 Tab：Agent（默认）走老的"主题→四方向→四 KV"路径；
+   * Custom 走"想法 + 参考图 → GPT 拼 PE → 用户改 → nano 出图"单图路径。
+   * 切换 Tab 仅影响输入面板的显示，画布上的 thread/节点是共享的，谁产出的图都展示在一起，
+   * 也都共用 KV/copy/banner 节点的后续编辑流（改图/去 UI/拆图/文案/推广图）。
+   */
+  const [canvasMode, setCanvasMode] = useState<"agent" | "custom">("agent");
+
+  /** 自定义模式：阶段 + 表单字段（全部驻留父级，CSS 隐藏即可保状态） */
+  const [customPhase, setCustomPhase] = useState<CustomModePhase>("input");
+  const [customIdea, setCustomIdea] = useState("");
+  const [customCampaignType, setCustomCampaignType] = useState<KvCampaignType>("scan");
+  const [customLayoutFile, setCustomLayoutFile] = useState<File | null>(null);
+  const [customStyleFile, setCustomStyleFile] = useState<File | null>(null);
+  const [customIpFile, setCustomIpFile] = useState<File | null>(null);
+  const [customCoinFile, setCustomCoinFile] = useState<File | null>(null);
+  const [customDraftedPrompt, setCustomDraftedPrompt] = useState("");
+  const [customPeMeta, setCustomPeMeta] = useState<{
+    layoutBase64: string;
+    width: number;
+    height: number;
+    campaignType: KvCampaignType;
+    kvLayoutTemplate?: string;
+  } | null>(null);
+  const [customLoading, setCustomLoading] = useState(false);
+  const [customBusyHint, setCustomBusyHint] = useState("");
+  const [customNotice, setCustomNotice] = useState<{
+    kind: "error" | "info";
+    text: string;
+  } | null>(null);
 
   const patchThread = useCallback(
     (threadId: string, fn: (t: StudioThreadState) => StudioThreadState) => {
@@ -320,16 +355,6 @@ function StudioCanvasInner() {
     [patchThread]
   );
 
-  const setKvRefineDraft = useCallback(
-    (threadId: string, key: DirKey, v: string) => {
-      patchThread(threadId, (t) => ({
-        ...t,
-        kvRefineDraftByKey: { ...t.kvRefineDraftByKey, [key]: v },
-      }));
-    },
-    [patchThread]
-  );
-
   const setKvIdeaDraft = useCallback(
     (threadId: string, key: DirKey, v: string) => {
       patchThread(threadId, (t) => ({
@@ -345,6 +370,19 @@ function StudioCanvasInner() {
       patchThread(threadId, (t) => ({
         ...t,
         bannerRefineDraftByKey: { ...t.bannerRefineDraftByKey, [key]: v },
+      }));
+    },
+    [patchThread]
+  );
+
+  const activateKvEditPanel = useCallback(
+    (threadId: string, key: DirKey) => {
+      setPreferredAnchorId(`kv-${threadId}-${key}`);
+      setStudioPanelDismissed(false);
+      patchThread(threadId, (t) => ({
+        ...t,
+        selectedKvKey: key,
+        selectedCopyKey: null,
       }));
     },
     [patchThread]
@@ -417,97 +455,6 @@ function StudioCanvasInner() {
       };
     });
   }, []);
-
-  const refineKv = useCallback(
-    async (threadId: string, key: DirKey) => {
-      const th = threads[threadId];
-      if (!th) return;
-      const instruction = (th.kvRefineDraftByKey[key] ?? "").trim();
-      if (!instruction) {
-        setPanelNotice({ kind: "info", text: "请先填写语言或修改说明" });
-        return;
-      }
-      const slot = th.kvSlots[key];
-      const fromResult = th.results.find((x) => x.optionKey === key);
-      const snap =
-        slot?.history[slot.index] ??
-        (fromResult
-          ? {
-              imageUrl: fromResult.imageUrl,
-              width: fromResult.width,
-              height: fromResult.height,
-              prompt: fromResult.prompt,
-            }
-          : null);
-      if (!snap?.imageUrl) {
-        setPanelNotice({ kind: "error", text: "没有可参照的成图" });
-        return;
-      }
-
-      setStudioRefining({ kind: "kv", threadId, key });
-      try {
-        const res = await fetch("/api/regenerate-kv-image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kind: "kv",
-            sourceImageUrl: snap.imageUrl,
-            languageInstruction: instruction,
-            width: snap.width,
-            height: snap.height,
-          }),
-        });
-        const data = await parseApiJson<{
-          imageUrl: string;
-          width: number;
-          height: number;
-          prompt: string;
-          error?: string;
-        }>(res);
-        const entry: StudioVisualSnapshot = {
-          imageUrl: data.imageUrl,
-          width: data.width,
-          height: data.height,
-          prompt: data.prompt,
-        };
-        setThreads((prev) => {
-          const t = prev[threadId];
-          if (!t) return prev;
-          const cur = t.kvSlots[key];
-          const hist = [...(cur?.history ?? [{ ...snap }]), entry];
-          const promoCopyByKey = { ...t.promoCopyByKey };
-          delete promoCopyByKey[key];
-          const promoBannerByKey = { ...t.promoBannerByKey };
-          delete promoBannerByKey[key];
-          const promoBannerSlots = { ...t.promoBannerSlots };
-          delete promoBannerSlots[key];
-          const kvSplitLayersByKey = { ...t.kvSplitLayersByKey };
-          delete kvSplitLayersByKey[key];
-          return {
-            ...prev,
-            [threadId]: {
-              ...t,
-              kvSlots: { ...t.kvSlots, [key]: { history: hist, index: hist.length - 1 } },
-              results: t.results.map((r) => (r.optionKey === key ? { ...r, ...entry } : r)),
-              promoCopyByKey,
-              promoBannerByKey,
-              promoBannerSlots,
-              kvSplitLayersByKey,
-              selectedCopyKey: t.selectedCopyKey === key ? null : t.selectedCopyKey,
-            },
-          };
-        });
-      } catch (e: unknown) {
-        setPanelNotice({
-          kind: "error",
-          text: e instanceof Error ? e.message : "生成失败",
-        });
-      } finally {
-        setStudioRefining(null);
-      }
-    },
-    [threads]
-  );
 
   const removeKvUi = useCallback(
     async (threadId: string, key: DirKey) => {
@@ -666,10 +613,11 @@ function StudioCanvasInner() {
       if (!th) return;
       const idea = (th.kvIdeaDraftByKey[key] ?? "").trim();
       if (!idea) {
-        setPanelNotice({ kind: "info", text: "请先输入内容" });
+        setPanelNotice({ kind: "info", text: "请先输入改图说明，或输入「拆图」拆图层" });
         return;
       }
-      if (/(拆图|拆分|split)/i.test(idea)) {
+      const splitNormalized = idea.trim().replace(/[。．.!！\s]+$/u, "");
+      if (splitNormalized === "拆图") {
         await splitKvLayers(threadId, key, idea);
         return;
       }
@@ -734,7 +682,6 @@ function StudioCanvasInner() {
             [threadId]: {
               ...t,
               kvSlots: { ...t.kvSlots, [key]: { history: hist, index: hist.length - 1 } },
-              kvRefineDraftByKey: { ...t.kvRefineDraftByKey, [key]: idea },
               results: t.results.map((r) => (r.optionKey === key ? { ...r, ...entry } : r)),
               promoCopyByKey,
               promoBannerByKey,
@@ -909,9 +856,8 @@ function StudioCanvasInner() {
       onPromoCopyCommit,
       bumpKvHistory,
       bumpBannerHistory,
-      setKvRefineDraft,
+      onKvActivateEditPanel: activateKvEditPanel,
       setBannerRefineDraft,
-      refineKv,
       removeKvUi,
       refineBanner,
     };
@@ -958,9 +904,8 @@ function StudioCanvasInner() {
     onPromoCopyCommit,
     bumpKvHistory,
     bumpBannerHistory,
-    setKvRefineDraft,
+    activateKvEditPanel,
     setBannerRefineDraft,
-    refineKv,
     removeKvUi,
     refineBanner,
   ]);
@@ -1304,6 +1249,181 @@ function StudioCanvasInner() {
     }
   }
 
+  /** 自定义模式：4 张参考图二进制 → dataURL，按需压缩后送 generate-kv-pe / generate-kv-from-prompt */
+  async function buildCustomImagesPayload() {
+    const [layoutB64, styleB64, ipB64, coinB64] = await Promise.all([
+      customLayoutFile ? compressLayoutFile(customLayoutFile) : Promise.resolve(undefined),
+      customStyleFile ? compressRefFile(customStyleFile) : Promise.resolve(undefined),
+      customIpFile ? compressIpRefFile(customIpFile) : Promise.resolve(undefined),
+      customCoinFile ? compressRefFile(customCoinFile) : Promise.resolve(undefined),
+    ]);
+    return {
+      layoutBase64: layoutB64,
+      styleBase64: styleB64,
+      ipBase64: ipB64,
+      coinBase64: coinB64,
+    };
+  }
+
+  /** 自定义模式阶段 1：把想法/玩法/参考图打包送 /api/generate-kv-pe，回来后切到 pe-ready 让用户校对 */
+  async function handleCustomSubmitPe() {
+    const idea = customIdea.trim();
+    if (!idea) {
+      setCustomNotice({ kind: "info", text: "请先填写「想法 / 主题 / 主视觉方向」" });
+      return;
+    }
+    setCustomNotice(null);
+    setCustomLoading(true);
+    setCustomBusyHint("GPT 拼接 prompt 中…");
+    try {
+      const images = await buildCustomImagesPayload();
+      const res = await fetch("/api/generate-kv-pe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idea,
+          campaignType: customCampaignType,
+          images,
+        }),
+      });
+      const data = await parseApiJson<{
+        prompt: string;
+        layoutBase64: string;
+        layoutWidth: number;
+        layoutHeight: number;
+        campaignType: KvCampaignType;
+        kvLayoutTemplate?: string;
+        error?: string;
+      }>(res);
+      setCustomDraftedPrompt(data.prompt);
+      setCustomPeMeta({
+        layoutBase64: data.layoutBase64,
+        width: data.layoutWidth,
+        height: data.layoutHeight,
+        campaignType: data.campaignType,
+        kvLayoutTemplate: data.kvLayoutTemplate,
+      });
+      setCustomPhase("pe-ready");
+    } catch (e: unknown) {
+      setCustomNotice({
+        kind: "error",
+        text: e instanceof Error ? e.message : "拼接 prompt 失败",
+      });
+    } finally {
+      setCustomLoading(false);
+      setCustomBusyHint("");
+    }
+  }
+
+  /** 自定义模式阶段 2：把用户改过的 prompt + 阶段 1 锁定的同一份图1/参考图送 nano 出图，结果落到新 thread。 */
+  async function handleCustomSubmitImage() {
+    const meta = customPeMeta;
+    const prompt = customDraftedPrompt.trim();
+    if (!meta) {
+      setCustomNotice({ kind: "error", text: "缺少 PE 上下文，请先点「生成 prompt」" });
+      return;
+    }
+    if (!prompt) {
+      setCustomNotice({ kind: "info", text: "prompt 不能为空" });
+      return;
+    }
+    setCustomNotice(null);
+    setCustomLoading(true);
+    setCustomBusyHint("nanobanana 出图中…");
+    try {
+      const refs = await buildCustomImagesPayload();
+      const res = await fetch("/api/generate-kv-from-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          campaignType: meta.campaignType,
+          layoutWidth: meta.width,
+          layoutHeight: meta.height,
+          images: {
+            // 务必沿用阶段 1 锁定的 layoutBase64（无论用户是否上传），否则会换图导致 PE 与最终图不匹配
+            layoutBase64: meta.layoutBase64,
+            styleBase64: refs.styleBase64,
+            ipBase64: refs.ipBase64,
+            coinBase64: refs.coinBase64,
+          },
+        }),
+      });
+      const data = await parseApiJson<{
+        result: { prompt: string; imageUrl: string; width: number; height: number };
+        campaignType: KvCampaignType;
+        error?: string;
+      }>(res);
+
+      const newThreadId = makeStudioThreadId();
+      const ideaText = customIdea.trim();
+      const newThread: StudioThreadState = {
+        ...emptyStudioThreadState(),
+        themeDraft: ideaText,
+        committedTheme: ideaText || "自定义生成",
+        promptStatus: "done",
+        options: [
+          { key: "A", title: "自定义", content: ideaText },
+          { key: "B", title: "", content: "" },
+          { key: "C", title: "", content: "" },
+          { key: "D", title: "", content: "" },
+        ],
+        selected: ["A"],
+        // 自定义模式只产 1 张图，隐藏 B/C/D direction 节点，避免画布上出现 3 个空槽
+        suppressedDirKeys: ["B", "C", "D"],
+        results: [
+          {
+            optionKey: "A",
+            prompt: data.result.prompt,
+            imageUrl: data.result.imageUrl,
+            width: data.result.width,
+            height: data.result.height,
+          },
+        ],
+        kvSlots: {
+          A: {
+            history: [
+              {
+                imageUrl: data.result.imageUrl,
+                width: data.result.width,
+                height: data.result.height,
+                prompt: data.result.prompt,
+              },
+            ],
+            index: 0,
+          },
+        },
+        kvCampaignTypeByKey: { A: data.campaignType },
+      };
+      setThreads((prev) => ({ ...prev, [newThreadId]: newThread }));
+      setThreadOrder((prev) => [...prev, newThreadId]);
+      setPreferredAnchorId(`kv-${newThreadId}-A`);
+
+      // 复位阶段，方便用户立即开始第二轮自定义生成；表单字段保留
+      setCustomPhase("input");
+      setCustomDraftedPrompt("");
+      setCustomPeMeta(null);
+    } catch (e: unknown) {
+      setCustomNotice({
+        kind: "error",
+        text: e instanceof Error ? e.message : "出图失败",
+      });
+    } finally {
+      setCustomLoading(false);
+      setCustomBusyHint("");
+    }
+  }
+
+  const setCustomFile = useCallback(
+    (slot: "layout" | "style" | "ip" | "coin", file: File | null) => {
+      if (slot === "layout") setCustomLayoutFile(file);
+      else if (slot === "style") setCustomStyleFile(file);
+      else if (slot === "ip") setCustomIpFile(file);
+      else setCustomCoinFile(file);
+    },
+    []
+  );
+
   /**
    * 共用「生成」：
    * 1) 已选中文案节点 → 出推广图
@@ -1466,6 +1586,12 @@ function StudioCanvasInner() {
     : "prompt";
   const anchorKey = effectiveAnchorId ? dirKeyFromStudioNodeId(effectiveAnchorId) : null;
 
+  const studioIdeaFieldLabel = panelMode === "kv" ? "改图说明" : "Your idea";
+  const studioIdeaPlaceholder =
+    panelMode === "kv"
+      ? "描述要修改的画面；仅在需要拆图层时输入「拆图」并点生成"
+      : "Your idea…";
+
   /** 主题节点：只改主题；方案/主视觉节点：显示参考图上传（方案节点优先突出上传区） */
   const showFileUploadsPanel =
     activeThread.options.length > 0 &&
@@ -1481,6 +1607,10 @@ function StudioCanvasInner() {
     if (kvPromoDialogOpen) return;
     const id = requestAnimationFrame(() => {
       if (effectiveAnchorId?.startsWith("prompt-")) {
+        themeTextareaRef.current?.focus();
+        return;
+      }
+      if (effectiveAnchorId?.startsWith("kv-")) {
         themeTextareaRef.current?.focus();
         return;
       }
@@ -1816,11 +1946,13 @@ function StudioCanvasInner() {
             [
               ["targetLanguage", "目标语言"],
               ["scene", "场景"],
-              ["prizeElements", "奖品元素（3×4宫格）"],
+              ["projectileBrief", "发射物"],
+              ["gridThemeBrief", "网格/球门主题"],
+              ["prizeElements", "奖品元素（格内填充，格数以图1母版为准）"],
               ["decorativeElements", "装饰元素"],
               ["primaryColor", "主色调"],
               ["ipBrief", "IP设定"],
-              ["coinVariation", "金币/代币"],
+              ["coinVariation", "金币变化方向"],
               ["moodKeywords", "关键词"],
             ] as const
           ).map(([key, label]) => (
@@ -1939,7 +2071,37 @@ function StudioCanvasInner() {
               enabled={anchorPanelToNode}
               onPayload={onPanelAnchorPayload}
             />
-            <Panel position="top-right" className="m-2 mt-14 flex flex-col gap-2 sm:mt-16">
+            <Panel position="top-right" className="m-2 mt-14 flex items-center gap-1 sm:mt-16">
+              <div
+                className="inline-flex items-center gap-0.5 rounded-lg border border-white/10 bg-black/40 p-0.5 backdrop-blur"
+                role="tablist"
+                aria-label="画布模式"
+              >
+                {(
+                  [
+                    ["agent", "Agent 模式"],
+                    ["custom", "自定义模式"],
+                  ] as const
+                ).map(([value, label]) => {
+                  const selected = canvasMode === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                        selected
+                          ? "bg-[#EB0EF5] text-white shadow-sm"
+                          : "text-zinc-300 hover:bg-white/10"
+                      }`}
+                      onClick={() => setCanvasMode(value)}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
               <Link
                 href="/flow"
                 className="inline-block rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-zinc-200 backdrop-blur hover:bg-white/10"
@@ -1951,7 +2113,10 @@ function StudioCanvasInner() {
         </div>
       </div>
 
-      {panelLinkPath && !studioPanelDismissed ? (
+      {/* 与上方 anchor 面板的同款抑制规则：自定义模式 + prompt/direction 焦点时连线一并隐藏 */}
+      {panelLinkPath &&
+      !studioPanelDismissed &&
+      !(canvasMode === "custom" && (panelMode === "prompt" || panelMode === "direction")) ? (
         <svg
           className={`pointer-events-none fixed inset-0 z-[10039] transition-opacity duration-700 ${
             linkPulse ? "opacity-100" : "opacity-[0.32]"
@@ -1969,7 +2134,39 @@ function StudioCanvasInner() {
         </svg>
       ) : null}
 
-      {effectiveAnchorId && !studioPanelDismissed ? (
+      {/* 自定义模式专用的右侧输入面板：始终挂载，CSS 隐藏以保留 textarea/光标/file 选择等浏览器态 */}
+      <CustomModePanel
+        visible={canvasMode === "custom"}
+        phase={customPhase}
+        idea={customIdea}
+        onIdeaChange={setCustomIdea}
+        campaignType={customCampaignType}
+        onCampaignTypeChange={setCustomCampaignType}
+        layoutFile={customLayoutFile}
+        styleFile={customStyleFile}
+        ipFile={customIpFile}
+        coinFile={customCoinFile}
+        onFileChange={setCustomFile}
+        draftedPrompt={customDraftedPrompt}
+        onDraftedPromptChange={setCustomDraftedPrompt}
+        peKvLayoutTemplate={customPeMeta?.kvLayoutTemplate}
+        notice={customNotice}
+        onDismissNotice={() => setCustomNotice(null)}
+        loading={customLoading}
+        busyHint={customBusyHint}
+        onSubmitPe={handleCustomSubmitPe}
+        onSubmitImage={handleCustomSubmitImage}
+        onBackToInput={() => setCustomPhase("input")}
+      />
+
+      {/*
+        Agent 模式的浮动 anchor 面板：当 canvasMode==='custom' 且焦点在 prompt/direction
+        （即「填主题→四方向」前置阶段）时让位给 CustomModePanel；但对 kv/copy/banner 节点
+        （生图后的改图/文案/推广图共用编辑面板）保持显示，使两种模式的「成片后续操作」一致。
+      */}
+      {effectiveAnchorId &&
+      !studioPanelDismissed &&
+      !(canvasMode === "custom" && (panelMode === "prompt" || panelMode === "direction")) ? (
         <div
           ref={studioPanelRef}
           className={`fixed z-[10040] max-h-[42vh] w-[min(92vw,26rem)] overflow-y-auto overflow-x-hidden rounded-2xl border border-white/10 bg-[#26292b]/98 py-3 pl-3 pr-4 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.55)] ring-1 ring-white/[0.06] backdrop-blur-md sm:w-[28rem] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20 ${
@@ -2123,7 +2320,7 @@ function StudioCanvasInner() {
           {panelMode !== "banner" && panelMode !== "direction" ? (
             <div className="flex flex-wrap items-end gap-2">
               <label className="min-w-0 flex-1 text-xs text-zinc-400">
-                Your idea
+                {studioIdeaFieldLabel}
                 <textarea
                   ref={themeTextareaRef}
                   value={panelIdeaValue}
@@ -2141,7 +2338,7 @@ function StudioCanvasInner() {
                     }
                   }}
                   rows={2}
-                  placeholder="Your idea（如：拆图）"
+                  placeholder={studioIdeaPlaceholder}
                   className="mt-1 w-full resize-y rounded-lg border border-zinc-600 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
                 />
               </label>

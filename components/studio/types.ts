@@ -21,14 +21,18 @@ export type DirectionNodeData = DirectionOption & {
 export type KvResultNodeData = {
   optionKey: DirKey;
   imageUrl: string;
+  /** 与 API 归一化后的成片像素，用于导出文件名等 */
+  width: number;
+  height: number;
   prompt: string;
   selected: boolean;
   anchorFocused: boolean;
+  /** 打开「写文案」弹窗（generate-copy） */
   onOpenPromo: () => void;
-  refineDraft: string;
-  onRefineDraftChange: (v: string) => void;
-  onRefine: () => void;
-  refineBusy: boolean;
+  /** 点击主图：展开右侧附着面板并进入改图输入 */
+  onActivateEditPanel: () => void;
+  /** 改图 / 去 UI / 拆图进行中 */
+  adjustmentBusy: boolean;
   onRemoveUi: () => void;
   removeUiBusy: boolean;
   splitLayers: Array<{ key: string; label: string; imageUrl: string }>;

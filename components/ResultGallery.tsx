@@ -1,6 +1,7 @@
 "use client";
 
 import { FourPointStarIcon } from "@/components/icons/FourPointStarIcon";
+import { copyImageHrefToClipboard, downloadImageHref } from "@/lib/client-image-export";
 import type { DirectionOption, GeneratedImageResult } from "@/lib/types";
 
 type Props = {
@@ -53,8 +54,36 @@ export function ResultGallery({
             <img
               src={item.imageUrl}
               alt={`${item.optionKey} 主视觉`}
-              className="max-h-[480px] w-auto max-w-full rounded-lg border border-zinc-100 dark:border-zinc-800"
+              className="max-h-[480px] w-auto max-w-full rounded-lg border border-zinc-100 object-contain select-none dark:border-zinc-800"
             />
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                onClick={() =>
+                  void downloadImageHref(
+                    item.imageUrl,
+                    `主视觉-${item.optionKey}-${item.width}x${item.height}.png`
+                  ).catch((e) => alert(e instanceof Error ? e.message : "保存失败"))
+                }
+              >
+                保存图片
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                onClick={() =>
+                  void copyImageHrefToClipboard(item.imageUrl).catch((e) =>
+                    alert(e instanceof Error ? e.message : "复制失败")
+                  )
+                }
+              >
+                复制图片
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+              也可在上方缩略图上右键使用浏览器自带的「将图像存储为…」「复制图像」。
+            </p>
             <details className="mt-3 rounded-lg border border-zinc-200 dark:border-zinc-700">
               <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
                 生图 prompt

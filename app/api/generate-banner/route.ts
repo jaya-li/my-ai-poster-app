@@ -5,6 +5,7 @@ import { formatFooterBlockForPrompt, loadPromoFooterFixed } from "@/lib/promo-fo
 import { inferPromoFooterLocale, PROMO_FOOTER_LOCALES, type PromoFooterLocale } from "@/lib/promo-locale";
 import { openai, getOpenAIModel } from "@/lib/openai";
 import { generateNanoImage } from "@/lib/nanobanana";
+import { tryNormalizeRemoteImageToLayoutPixels } from "@/lib/nano-output-normalize";
 import { BANNER_PROMPT_SYSTEM } from "@/lib/prompts";
 import { inputText, inputImage } from "@/lib/response-content";
 import { urlToNanoReference } from "@/lib/url-to-reference";
@@ -89,9 +90,15 @@ export async function POST(req: NextRequest) {
       referenceImages: [mainRef, layoutRef],
     });
 
+    const imageUrl = await tryNormalizeRemoteImageToLayoutPixels(
+      nanoResult.imageUrl,
+      2560,
+      1344
+    );
+
     return NextResponse.json({
       prompt,
-      imageUrl: nanoResult.imageUrl,
+      imageUrl,
       width: 2560,
       height: 1344,
     });

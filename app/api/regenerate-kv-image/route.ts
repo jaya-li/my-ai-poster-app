@@ -4,9 +4,11 @@ import path from "path";
 import { z } from "zod";
 import { openai, getOpenAIModel } from "@/lib/openai";
 import { generateNanoImage } from "@/lib/nanobanana";
+import { tryNormalizeRemoteImageToLayoutPixels } from "@/lib/nano-output-normalize";
 import { inputText, inputImage, inputImageHigh } from "@/lib/response-content";
 import { urlToNanoReference } from "@/lib/url-to-reference";
 import { getImageSizeFromBuffer } from "@/lib/image";
+import { getKvCampaignOutputPixels } from "@/lib/kv-campaign-output-size";
 import { KV_SPLIT_REFERENCE_BY_CAMPAIGN } from "@/lib/kv-split-reference";
 
 export const runtime = "nodejs";
@@ -119,14 +121,23 @@ const KV_SPLIT_LAYER_PLAN: Record<
     { key: "bottom_buttons", label: "下方按钮", instruction: "仅保留下方按钮区域（按钮及其紧邻部件）" },
   ],
   tuijinbi: [
-    { key: "background", label: "背景", instruction: "仅保留画面上半与周缘氛围背景，不含十二宫格架、台面、球体与底栏" },
+    {
+      key: "background",
+      label: "背景",
+      instruction: "仅保留画面上半与周缘氛围背景，不含**中部奖品格阵列**外框、滑道/台面、球体堆与底部控制区",
+    },
     {
       key: "tuijinbi_playfield",
       label: "奖格与台前球区",
       instruction:
-        "保留 3×4 十二宫格及其支架、透视台面、大号前景球与堆叠小球；不含顶栏 UI 与最底三键横条",
+        "保留**中部奖品格阵列**：列数与行数须与当前主视觉一致；含外框（球门/木架/灯箱等）、滑道或格下过渡层、落物台上的 Hero 与球/币堆；不含顶栏 UI 与最底控制条",
     },
-    { key: "bottom_buttons", label: "底部三键", instruction: "仅保留底部左中右三按钮控制台横条及其紧邻装饰" },
+    {
+      key: "bottom_buttons",
+      label: "底部控制台",
+      instruction:
+        "仅保留底部控制条：若为「中央主行动按钮 + 左右圆形次级按钮」则整块保留（含扫码或 QR 入口占位若存在）；若为三条等宽横键母版则保留三条按键及其紧邻装饰",
+    },
   ],
   baiyuan: [
     { key: "background", label: "背景", instruction: "仅保留背景环境与场景底层" },
@@ -151,13 +162,32 @@ export async function POST(req: NextRequest) {
     const isSplitLayers = !isBanner && parsed.mode === "split_layers";
 
     const ref = await urlToNanoReference(isBanner ? "banner_source" : "kv_source", parsed.sourceImageUrl);
-    let width = parsed.width;
-    let height = parsed.height;
-    if (!width || !height) {
-      const buf = Buffer.from(ref.base64, "base64");
-      const dim = await getImageSizeFromBuffer(buf);
-      width = dim.width;
-      height = dim.height;
+    let width: number;
+    let height: number;
+    if (isBanner) {
+      if (parsed.width && parsed.height) {
+        width = parsed.width;
+        height = parsed.height;
+      } else {
+        const buf = Buffer.from(ref.base64, "base64");
+        const dim = await getImageSizeFromBuffer(buf);
+        width = dim.width;
+        height = dim.height;
+      }
+    } else {
+      if (parsed.width && parsed.height) {
+        width = parsed.width;
+        height = parsed.height;
+      } else {
+        try {
+          const buf = Buffer.from(ref.base64, "base64");
+          const dim = await getImageSizeFromBuffer(buf);
+          width = dim.width;
+          height = dim.height;
+        } catch {
+          ({ width, height } = getKvCampaignOutputPixels(parsed.campaignType));
+        }
+      }
     }
 
     const layoutHint = `【输出尺寸】与参考图一致：${width}×${height} 像素。`;
@@ -202,7 +232,7 @@ export async function POST(req: NextRequest) {
             const splitRefDataUrl = await loadPublicImageDataUrl(splitRefCfg.filename);
             const splitRefCaption =
               parsed.campaignType === "tuijinbi"
-                ? `【推金币拆图参考（${splitRefCfg.filename}）】该图为**分层边界示意**（黑底上三块独立素材）：左≈上半/周缘背景渐变板；中≈含 3×4 十二格与格架（Grid Holder）及中部绿台的一体化「主游玩区」壳层；右≈前景球形主体所在的台面与底控制台区域。拆每一「目标层」时，对照本参考理解**哪条线应镂成透明分界**，只学**拆边与留白/透明处理习惯**，严禁把参考图里的颜色、贴图或物体画进输出，输出内容必须完全来自下方「当前主视觉」。`
+                ? `【推金币拆图参考（${splitRefCfg.filename}）】该图为**分层边界示意**（黑底上多块独立素材）：左≈上半/周缘背景；中≈**中部奖品格阵列 + 格架与外框及台面 / 滑道过渡 + Hero 与前景堆体的一体化游玩区壳层**；右≈底控制台。**拆层时对齐分界**，只学边界习惯，严禁把示意图内容画进输出；输出像素须完全来自下方「当前主视觉」。`
                 : `【拆图参考（${splitRefCfg.filename}）】仅学习拆层边界与透明处理方式；严禁复用该参考图的具体内容。`;
             layerContent.push(inputText(splitRefCaption));
             layerContent.push(inputImageHigh(splitRefDataUrl));
@@ -225,10 +255,15 @@ export async function POST(req: NextRequest) {
           quality: "2k",
           referenceImages: [ref],
         });
+        const layerImageUrl = await tryNormalizeRemoteImageToLayoutPixels(
+          layerImage.imageUrl,
+          width,
+          height
+        );
         layers.push({
           key: layer.key,
           label: layer.label,
-          imageUrl: layerImage.imageUrl,
+          imageUrl: layerImageUrl,
           width,
           height,
           prompt: layerPrompt,
@@ -298,9 +333,15 @@ export async function POST(req: NextRequest) {
       referenceImages: [ref],
     });
 
+    const imageUrl = await tryNormalizeRemoteImageToLayoutPixels(
+      nanoResult.imageUrl,
+      width,
+      height
+    );
+
     return NextResponse.json({
       prompt,
-      imageUrl: nanoResult.imageUrl,
+      imageUrl,
       width,
       height,
     });

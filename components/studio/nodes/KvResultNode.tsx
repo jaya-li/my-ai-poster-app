@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { copyImageHrefToClipboard, downloadImageHref } from "@/lib/client-image-export";
 import type { KvResultRFNode } from "../types";
 
 export function KvResultNode({ data }: NodeProps<KvResultRFNode>) {
-  const [activeTab, setActiveTab] = useState<"refine" | "remove_ui">("refine");
   const canPrev = data.historyCount > 1 && data.historyIndex > 0;
   const canNext = data.historyCount > 1 && data.historyIndex < data.historyCount - 1;
+  const exportBase = `主视觉-${data.optionKey}-${data.width}x${data.height}`;
 
   return (
     <div
@@ -23,25 +23,74 @@ export function KvResultNode({ data }: NodeProps<KvResultRFNode>) {
       role="group"
     >
       <Handle type="target" position={Position.Top} className="!size-2 !border-0 !bg-white/35" />
-      <div className="flex items-center justify-between gap-1 border-b border-white/10 px-2 py-1.5">
+      <div className="flex items-center justify-center gap-1 border-b border-white/10 px-2 py-1.5">
         <span className="text-center text-xs font-medium text-white/80">主视觉 · {data.optionKey}</span>
+      </div>
+      <div
+        role="button"
+        tabIndex={0}
+        className="nodrag nopan relative block w-full cursor-pointer bg-black/40 text-left outline-none ring-[#EB0EF5]/35 focus-visible:ring-2"
+        onClick={(e) => {
+          e.stopPropagation();
+          data.onActivateEditPanel();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            data.onActivateEditPanel();
+          }
+        }}
+        aria-label="打开改图面板"
+        title="左键打开改图；在图片上右键可「将图像复制/存储为」"
+      >
+        <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={data.imageUrl}
+            alt={`${data.optionKey} 主视觉`}
+            className="pointer-events-auto h-auto w-full max-w-full object-contain opacity-100 select-none"
+            draggable={false}
+          />
+          {data.adjustmentBusy ? (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50 text-[11px] font-medium text-white/90 backdrop-blur-[2px]">
+              生成中…
+            </div>
+          ) : (
+            <div className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-center">
+              <span className="rounded-md bg-black/55 px-2 py-0.5 text-[9px] text-white/85 backdrop-blur-sm">
+                点图改画面
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-1 border-t border-white/10 px-1.5 py-1">
         <button
           type="button"
-          className="nodrag nopan shrink-0 rounded-lg bg-[#EB0EF5] px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-[#c90ad0]"
+          className="nodrag nopan rounded-md border border-white/15 bg-black/35 py-1 text-[10px] font-medium text-white/85 hover:bg-white/10"
           onClick={(e) => {
             e.stopPropagation();
-            data.onOpenPromo();
+            void downloadImageHref(data.imageUrl, `${exportBase}.png`).catch((err) =>
+              alert(err instanceof Error ? err.message : "保存失败")
+            );
           }}
         >
-          生文案
+          保存图片
+        </button>
+        <button
+          type="button"
+          className="nodrag nopan rounded-md border border-white/15 bg-black/35 py-1 text-[10px] font-medium text-white/85 hover:bg-white/10"
+          onClick={(e) => {
+            e.stopPropagation();
+            void copyImageHrefToClipboard(data.imageUrl).catch((err) =>
+              alert(err instanceof Error ? err.message : "复制失败")
+            );
+          }}
+        >
+          复制图片
         </button>
       </div>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={data.imageUrl}
-        alt={`${data.optionKey} 主视觉`}
-        className="pointer-events-none h-auto w-full bg-black/40 object-contain"
-      />
       <div className="flex items-center justify-between gap-1 border-t border-white/10 bg-black/25 px-1 py-1">
         <button
           type="button"
@@ -72,84 +121,29 @@ export function KvResultNode({ data }: NodeProps<KvResultRFNode>) {
         </button>
       </div>
       <div className="space-y-1 border-t border-white/10 px-2 py-1.5">
-        <div className="grid grid-cols-2 gap-1 rounded-lg bg-black/30 p-0.5 text-[10px]">
+        <div className="grid grid-cols-2 gap-1">
           <button
             type="button"
-            className={`nodrag nopan rounded-md py-1 ${
-              activeTab === "refine" ? "bg-[#EB0EF5] text-white" : "text-white/65 hover:bg-white/10"
-            }`}
+            className="nodrag nopan rounded-lg bg-[#EB0EF5] py-1.5 text-[11px] font-medium text-white hover:bg-[#c90ad0]"
             onClick={(e) => {
               e.stopPropagation();
-              setActiveTab("refine");
+              data.onOpenPromo();
             }}
           >
-            改字
+            写文案
           </button>
-          <button
-            type="button"
-            className={`nodrag nopan rounded-md py-1 ${
-              activeTab === "remove_ui"
-                ? "bg-[#EB0EF5] text-white"
-                : "text-white/65 hover:bg-white/10"
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveTab("remove_ui");
-            }}
-          >
-            去UI
-          </button>
-        </div>
-        {activeTab === "refine" ? (
-          <>
-            <label className="block text-[10px] text-white/45">
-              画面调整
-              <textarea
-                className="nodrag nopan mt-0.5 w-full resize-y rounded-lg border border-white/15 bg-black/35 px-2 py-1 text-[11px] text-white/90 placeholder:text-white/30"
-                rows={2}
-                placeholder="可选"
-                value={data.refineDraft}
-                onChange={(e) => data.onRefineDraftChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    (e.ctrlKey || e.metaKey) &&
-                    !e.nativeEvent.isComposing
-                  ) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (!data.refineBusy) data.onRefine();
-                  }
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-              />
-            </label>
-            <button
-              type="button"
-              disabled={data.refineBusy}
-              className="nodrag nopan w-full rounded-lg bg-[#EB0EF5] py-1.5 text-[11px] font-medium text-white hover:bg-[#c90ad0] disabled:opacity-45"
-              onClick={(e) => {
-                e.stopPropagation();
-                data.onRefine();
-              }}
-            >
-              {data.refineBusy ? "生成中…" : "重新生成"}
-            </button>
-          </>
-        ) : (
           <button
             type="button"
             disabled={data.removeUiBusy}
-            className="nodrag nopan w-full rounded-lg bg-[#EB0EF5] py-1.5 text-[11px] font-medium text-white hover:bg-[#c90ad0] disabled:opacity-45"
+            className="nodrag nopan rounded-lg border border-white/20 bg-black/30 py-1.5 text-[11px] font-medium text-white/90 hover:bg-white/10 disabled:opacity-45"
             onClick={(e) => {
               e.stopPropagation();
               data.onRemoveUi();
             }}
           >
-            {data.removeUiBusy ? "生成中…" : "去UI生成"}
+            {data.removeUiBusy ? "生成中…" : "去UI"}
           </button>
-        )}
+        </div>
       </div>
       <a
         href={data.imageUrl}
@@ -162,7 +156,9 @@ export function KvResultNode({ data }: NodeProps<KvResultRFNode>) {
       </a>
       {data.splitLayers.length > 0 ? (
         <details className="border-t border-white/10 bg-black/20 px-2 py-1.5">
-          <summary className="cursor-pointer text-[10px] text-white/60">拆图结果（{data.splitLayers.length}）</summary>
+          <summary className="cursor-pointer text-[10px] text-white/60">
+            拆图结果（{data.splitLayers.length}）
+          </summary>
           <div className="mt-1.5 grid grid-cols-3 gap-1.5">
             {data.splitLayers.map((layer) => (
               <a

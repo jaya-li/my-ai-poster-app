@@ -33,9 +33,13 @@ export type NanoReferenceImage = {
   mimeType: string;
 };
 
-function closestAspectRatio(width: number, height: number): string {
+function closestAspectRatio(width: number, height: number): {
+  label: string;
+  ratio: number;
+} {
   const target = width / height;
-  let best: string = "1:1";
+  let bestLabel: string = "1:1";
+  let bestRatio = 1;
   let bestScore = Infinity;
   for (const ar of T8STAR_ASPECT_RATIOS) {
     const [a, b] = ar.split(":").map(Number);
@@ -43,14 +47,25 @@ function closestAspectRatio(width: number, height: number): string {
     const score = Math.abs(Math.log(r / target));
     if (score < bestScore) {
       bestScore = score;
-      best = ar;
+      bestLabel = ar;
+      bestRatio = r;
     }
   }
-  return best;
+  return { label: bestLabel, ratio: bestRatio };
 }
 
-function qualityToImageSize(quality: "2k" | "standard" | undefined): "1K" | "2K" | "4K" {
+/**
+ * T8Star 的 image_size 为粗粒度 1K/2K/4K；长边较高或画布面积较大时用 4K，减轻与目标像素对齐时的缩放损失。
+ */
+function imageSizeTierForCanvas(
+  quality: "2k" | "standard" | undefined,
+  width: number,
+  height: number
+): "1K" | "2K" | "4K" {
   if (quality === "standard") return "1K";
+  const maxSide = Math.max(width, height);
+  const area = width * height;
+  if (maxSide >= 2400 || area >= 2_800_000) return "4K";
   return "2K";
 }
 
@@ -182,7 +197,9 @@ const MAX_NANO_ATTEMPTS = 4;
 
 export async function generateNanoImage(params: {
   prompt: string;
+  /** 目标画布宽（主视觉应与 `lib/kv-campaign-output-size` 约定一致） */
   width: number;
+  /** 目标画布高 */
   height: number;
   quality?: "2k" | "standard";
   referenceImages?: NanoReferenceImage[];
@@ -201,16 +218,61 @@ export async function generateNanoImage(params: {
 
   const url = `${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 
-  const aspectRatio = closestAspectRatio(params.width, params.height);
-  const imageSize = qualityToImageSize(params.quality);
+  /** 与 T8Star 约定：aspect_ratio + image_size；另附目标像素供网关/模型侧解析（与 ComfyUI Tutu 节点行为对齐时可读） */
+  const aspect = closestAspectRatio(params.width, params.height);
+  const imageSize = imageSizeTierForCanvas(params.quality, params.width, params.height);
+
+  /** 设为 `0` / `false` 时不下发额外宽高校验字段（上游若严格校验 body 可能拒收未知键） */
+  const sendExactDimensions =
+    (process.env.NANOBANANA_SEND_EXACT_DIMENSIONS ?? "1").trim().toLowerCase() !== "0" &&
+    (process.env.NANOBANANA_SEND_EXACT_DIMENSIONS ?? "1").trim().toLowerCase() !== "false";
+
+  /**
+   * 输出尺寸 footer：明确告诉模型最终目标画幅 + 引擎档位 + 后处理策略，
+   * 让模型按目标比例构图（不被引擎档位带偏）。后处理用 contain + 模糊背景，**不会裁切**任何内容。
+   */
+  const targetRatio = params.width / params.height;
+  const targetRatioStr = `${params.width}:${params.height}（≈ ${targetRatio.toFixed(3)}:1，宽:高）`;
+  const orientationWord =
+    targetRatio < 0.7 ? "**瘦高竖版**" : targetRatio > 1.4 ? "**横版**" : "近方形";
+
+  const aspectMismatch =
+    Math.abs(Math.log(aspect.ratio / targetRatio)) >= 0.06;
+  const mismatchHint = aspectMismatch
+    ? ` 由于引擎档位 ${aspect.label} 与目标比例略有失配，最终成片在 ${
+        aspect.ratio > targetRatio ? "**左右两侧**" : "**上下两条**"
+      }会出现少量「模糊延伸背景」用于铺底；因此请把图1 中**所有 UI/按钮/IP/二维码/标题文字**画进画面的**主体可读区**，**不要把按钮或文字贴到画布最边缘**——上游模型实际出图按 ${aspect.label} 比例即可，无需自行加裁边或延伸内容；后处理会把整张完整收进 ${params.width}×${params.height} 画布且**不会裁切**任何像素。`
+    : "";
+
+  const outputSizeFooter =
+    `\n\n【最高优先级 — 版式几何复刻】` +
+    `图 1 是版式母版，**不是灵感参考**。成片必须像把图 1 的设计稿"逐图层换皮"——只换主题色、插画/角色和文字本地化，` +
+    `**禁止**重排、合并、拆分、删除/新增模块，**禁止**改任何模块的相对位置/尺寸/留白；` +
+    `检验标准：成片与图 1 叠在一起，所有模块（顶栏/中部主体/底部按钮/二维码或扫码入口/外框/灯带/装饰边）应**几何骨架完全重合**，只有像素皮肤换掉。` +
+    `\n\n【成片画幅】` +
+    `${orientationWord}海报，最终像素严格 **${params.width}×${params.height}**（${targetRatioStr}）；` +
+    `所有版式思考都直接基于这张 ${params.width}×${params.height} 画布；` +
+    `不在画面中央显示 W×H 数字或测距标尺。` +
+    mismatchHint;
 
   const body: Record<string, unknown> = {
     model,
-    prompt: params.prompt,
-    aspect_ratio: aspectRatio,
+    prompt: `${params.prompt.trim()}${outputSizeFooter}`,
+    aspect_ratio: aspect.label,
     image_size: imageSize,
     response_format: "url",
   };
+
+  if (sendExactDimensions) {
+    body.width = params.width;
+    body.height = params.height;
+    body.target_width = params.width;
+    body.target_height = params.height;
+    body.output_dimensions = {
+      width: params.width,
+      height: params.height,
+    };
+  }
 
   const refs = params.referenceImages?.filter((r) => r.base64?.length) ?? [];
   if (refs.length > 0) {

@@ -73,6 +73,8 @@ export default function HomePage() {
   const [tuijinbiSpecForm, setTuijinbiSpecForm] = useState({
     targetLanguage: "",
     scene: "",
+    projectileBrief: "",
+    gridThemeBrief: "",
     prizeElements: "",
     decorativeElements: "",
     primaryColor: "",
@@ -595,11 +597,13 @@ export default function HomePage() {
                   [
                     ["targetLanguage", "目标语言"],
                     ["scene", "场景"],
-                    ["prizeElements", "奖品元素（3×4宫格内）"],
+                    ["projectileBrief", "发射物"],
+                    ["gridThemeBrief", "网格/球门主题"],
+                    ["prizeElements", "奖品元素（格内填充，格数以图1母版为准）"],
                     ["decorativeElements", "装饰元素"],
                     ["primaryColor", "主色调"],
                     ["ipBrief", "IP设定"],
-                    ["coinVariation", "金币/代币表现"],
+                    ["coinVariation", "金币变化方向"],
                     ["moodKeywords", "关键词"],
                   ] as const
                 ).map(([key, label]) => (

@@ -1,6 +1,7 @@
 "use client";
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { copyImageHrefToClipboard, downloadImageHref } from "@/lib/client-image-export";
 import type { PromoBannerRFNode } from "../types";
 
 export function PromoBannerNode({ data }: NodeProps<PromoBannerRFNode>) {
@@ -37,8 +38,36 @@ export function PromoBannerNode({ data }: NodeProps<PromoBannerRFNode>) {
       <img
         src={data.imageUrl}
         alt={`${data.optionKey} 推广图`}
-        className="pointer-events-none h-auto w-full bg-black/40 object-contain"
+        title="可右键复制或存储图像"
+        className="pointer-events-auto h-auto w-full bg-black/40 object-contain select-none"
       />
+      <div className="grid grid-cols-2 gap-1 border-t border-white/10 px-1.5 py-1">
+        <button
+          type="button"
+          className="nodrag nopan rounded-md border border-white/15 bg-black/35 py-1 text-[10px] font-medium text-white/85 hover:bg-white/10"
+          onClick={(e) => {
+            e.stopPropagation();
+            void downloadImageHref(
+              data.imageUrl,
+              `推广图-${data.optionKey}-${data.width}x${data.height}.png`
+            ).catch((err) => alert(err instanceof Error ? err.message : "保存失败"));
+          }}
+        >
+          保存图片
+        </button>
+        <button
+          type="button"
+          className="nodrag nopan rounded-md border border-white/15 bg-black/35 py-1 text-[10px] font-medium text-white/85 hover:bg-white/10"
+          onClick={(e) => {
+            e.stopPropagation();
+            void copyImageHrefToClipboard(data.imageUrl).catch((err) =>
+              alert(err instanceof Error ? err.message : "复制失败")
+            );
+          }}
+        >
+          复制图片
+        </button>
+      </div>
       <div className="flex items-center justify-between gap-1 border-t border-white/10 bg-black/25 px-1 py-1">
         <button
           type="button"
